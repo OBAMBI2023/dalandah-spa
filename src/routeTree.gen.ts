@@ -10,11 +10,48 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AProposRouteImport } from './routes/a-propos'
+import { Route as BoutiqueRouteImport } from './routes/boutique'
+import { Route as CommandeRouteImport } from './routes/commande'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as PanierRouteImport } from './routes/panier'
+import { Route as ReservationRouteImport } from './routes/reservation'
 import { Route as SoinsRouteImport } from './routes/soins'
+import { Route as BoutiqueProductIdRouteImport } from './routes/boutique.$productId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AProposRoute = AProposRouteImport.update({
+  id: '/a-propos',
+  path: '/a-propos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BoutiqueRoute = BoutiqueRouteImport.update({
+  id: '/boutique',
+  path: '/boutique',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommandeRoute = CommandeRouteImport.update({
+  id: '/commande',
+  path: '/commande',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PanierRoute = PanierRouteImport.update({
+  id: '/panier',
+  path: '/panier',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReservationRoute = ReservationRouteImport.update({
+  id: '/reservation',
+  path: '/reservation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SoinsRoute = SoinsRouteImport.update({
@@ -22,30 +59,90 @@ const SoinsRoute = SoinsRouteImport.update({
   path: '/soins',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BoutiqueProductIdRoute = BoutiqueProductIdRouteImport.update({
+  id: '/$productId',
+  path: '/$productId',
+  getParentRoute: () => BoutiqueRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/boutique': typeof BoutiqueRouteWithChildren
+  '/commande': typeof CommandeRoute
+  '/contact': typeof ContactRoute
+  '/panier': typeof PanierRoute
+  '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
+  '/boutique/$productId': typeof BoutiqueProductIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/boutique': typeof BoutiqueRouteWithChildren
+  '/commande': typeof CommandeRoute
+  '/contact': typeof ContactRoute
+  '/panier': typeof PanierRoute
+  '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
+  '/boutique/$productId': typeof BoutiqueProductIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/boutique': typeof BoutiqueRouteWithChildren
+  '/commande': typeof CommandeRoute
+  '/contact': typeof ContactRoute
+  '/panier': typeof PanierRoute
+  '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
+  '/boutique/$productId': typeof BoutiqueProductIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/soins'
+  fullPaths:
+    | '/'
+    | '/a-propos'
+    | '/boutique'
+    | '/commande'
+    | '/contact'
+    | '/panier'
+    | '/reservation'
+    | '/soins'
+    | '/boutique/$productId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/soins'
-  id: '__root__' | '/' | '/soins'
+  to:
+    | '/'
+    | '/a-propos'
+    | '/boutique'
+    | '/commande'
+    | '/contact'
+    | '/panier'
+    | '/reservation'
+    | '/soins'
+    | '/boutique/$productId'
+  id:
+    | '__root__'
+    | '/'
+    | '/a-propos'
+    | '/boutique'
+    | '/commande'
+    | '/contact'
+    | '/panier'
+    | '/reservation'
+    | '/soins'
+    | '/boutique/$productId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AProposRoute: typeof AProposRoute
+  BoutiqueRoute: typeof BoutiqueRouteWithChildren
+  CommandeRoute: typeof CommandeRoute
+  ContactRoute: typeof ContactRoute
+  PanierRoute: typeof PanierRoute
+  ReservationRoute: typeof ReservationRoute
   SoinsRoute: typeof SoinsRoute
 }
 
@@ -58,6 +155,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/a-propos': {
+      id: '/a-propos'
+      path: '/a-propos'
+      fullPath: '/a-propos'
+      preLoaderRoute: typeof AProposRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/boutique': {
+      id: '/boutique'
+      path: '/boutique'
+      fullPath: '/boutique'
+      preLoaderRoute: typeof BoutiqueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/commande': {
+      id: '/commande'
+      path: '/commande'
+      fullPath: '/commande'
+      preLoaderRoute: typeof CommandeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/panier': {
+      id: '/panier'
+      path: '/panier'
+      fullPath: '/panier'
+      preLoaderRoute: typeof PanierRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reservation': {
+      id: '/reservation'
+      path: '/reservation'
+      fullPath: '/reservation'
+      preLoaderRoute: typeof ReservationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/soins': {
       id: '/soins'
       path: '/soins'
@@ -65,11 +204,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SoinsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/boutique/$productId': {
+      id: '/boutique/$productId'
+      path: '/$productId'
+      fullPath: '/boutique/$productId'
+      preLoaderRoute: typeof BoutiqueProductIdRouteImport
+      parentRoute: typeof BoutiqueRoute
+    }
   }
 }
 
+interface BoutiqueRouteChildren {
+  BoutiqueProductIdRoute: typeof BoutiqueProductIdRoute
+}
+
+const BoutiqueRouteChildren: BoutiqueRouteChildren = {
+  BoutiqueProductIdRoute: BoutiqueProductIdRoute,
+}
+
+const BoutiqueRouteWithChildren = BoutiqueRoute._addFileChildren(
+  BoutiqueRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AProposRoute: AProposRoute,
+  BoutiqueRoute: BoutiqueRouteWithChildren,
+  CommandeRoute: CommandeRoute,
+  ContactRoute: ContactRoute,
+  PanierRoute: PanierRoute,
+  ReservationRoute: ReservationRoute,
   SoinsRoute: SoinsRoute,
 }
 export const routeTree = rootRouteImport
