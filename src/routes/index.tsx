@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Leaf, Heart, Sparkles, Flower2, Clock } from "lucide-react";
-import facial from "@/assets/facial.jpg.asset.json";
+import hero from "@/assets/hero.jpg";
 import gamme from "@/assets/gamme.jpg.asset.json";
 import { serviceCategories } from "@/data/services";
 import { products } from "@/data/products";
 import { ProductCard } from "@/components/cards";
+import { MobileHome } from "@/components/mobile-home";
+import { Img } from "@/components/app";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -29,8 +31,10 @@ const values = [
 function Index() {
   return (
     <>
+      <MobileHome />
+      <div className="hidden lg:block">
       <section className="relative overflow-hidden bg-deep text-deep-foreground">
-        <img src={facial.url} alt="Soin du visage chez Dalanda Beauty-Spa" className="absolute inset-0 h-full w-full object-cover opacity-45" />
+        <Img sizes="100vw" src={hero} alt="Moment de détente chez Dalanda Beauty-Spa" className="absolute inset-0 h-full w-full object-cover opacity-45" />
         <div className="absolute inset-0 bg-gradient-to-r from-deep via-deep/80 to-transparent" />
         <div className="relative mx-auto max-w-7xl px-5 py-24 md:py-36">
           <div className="max-w-2xl animate-fade-up">
@@ -52,7 +56,7 @@ function Index() {
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
           {serviceCategories.map((c) => (
             <article key={c.id} className="group overflow-hidden rounded-2xl border bg-card">
-              <div className="aspect-[4/5] overflow-hidden"><img src={c.image} alt={c.title} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" /></div>
+              <div className="aspect-[4/5] overflow-hidden"><Img src={c.image} alt={c.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" /></div>
               <div className="p-5">
                 <h3 className="text-2xl text-deep">{c.title}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">{c.description}</p>
@@ -96,7 +100,7 @@ function Index() {
       </section>
 
       <section className="mx-auto grid max-w-7xl items-center gap-10 px-5 pb-20 md:grid-cols-2">
-        <img src={gamme.url} alt="Gamme Dalanda Cosmétique" loading="lazy" className="rounded-2xl shadow-soft" />
+        <Img src={gamme.url} alt="Gamme Dalanda Cosmétique" className="rounded-2xl shadow-soft" />
         <div>
           <p className="eyebrow">Dalanda Cosmétique</p>
           <h2 className="mt-2 text-4xl text-deep md:text-5xl">Une routine pensée pour votre peau</h2>
@@ -115,6 +119,7 @@ function Index() {
           </div>
         </div>
       </section>
+      </div>
     </>
   );
 }

@@ -5,6 +5,7 @@ import { Minus, Plus, Check } from "lucide-react";
 import { getProduct } from "@/data/products";
 import { useCart } from "@/lib/cart";
 import { formatFCFA } from "@/lib/format";
+import { Img } from "@/components/app";
 
 export const Route = createFileRoute("/boutique/$productId")({
   loader: ({ params }) => {
@@ -44,12 +45,12 @@ function ProductPage() {
       <Link to="/boutique" className="text-sm text-muted-foreground hover:text-primary">← Boutique</Link>
       <div className="mt-6 grid gap-10 md:grid-cols-2">
         <div>
-          <img src={p.images[img]} alt={p.name} className="aspect-square w-full rounded-2xl object-cover" />
+          <Img priority sizes="(min-width: 1024px) 50vw, 100vw" src={p.images[img]} alt={p.name} className="aspect-square w-full rounded-2xl object-cover" />
           {p.images.length > 1 && (
             <div className="mt-3 flex gap-3">
               {p.images.map((src, i) => (
                 <button key={i} onClick={() => setImg(i)} className={`h-20 w-20 overflow-hidden rounded-lg border-2 ${i === img ? "border-primary" : "border-transparent"}`}>
-                  <img src={src} alt="" className="h-full w-full object-cover" />
+                  <Img src={src} alt="" className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>

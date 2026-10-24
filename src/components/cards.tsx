@@ -5,13 +5,14 @@ import type { Product } from "@/data/products";
 import type { Service } from "@/data/services";
 import { useCart } from "@/lib/cart";
 import { formatFCFA } from "@/lib/format";
+import { Img } from "@/components/app";
 
 export function ProductCard({ p }: { p: Product }) {
   const { add } = useCart();
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition hover:shadow-soft">
       <Link to="/boutique/$productId" params={{ productId: p.id }} className="relative aspect-square overflow-hidden bg-secondary">
-        <img src={p.images[0]} alt={p.name} loading="lazy" width={1024} height={1024} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+        <Img sizes="(min-width: 1024px) 25vw, 50vw" src={p.images[0]} alt={p.name} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
         {!p.available && <span className="absolute left-3 top-3 rounded-full bg-deep px-3 py-1 text-xs text-deep-foreground">Indisponible</span>}
       </Link>
       <div className="flex flex-1 flex-col p-5">
@@ -33,7 +34,7 @@ export function ProductCard({ p }: { p: Product }) {
 export function ServiceCard({ s }: { s: Service }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border bg-card">
-      <img src={s.image} alt={s.name} loading="lazy" className="aspect-[4/3] w-full object-cover" />
+      <Img sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" src={s.image} alt={s.name} className="aspect-[4/3] w-full object-cover" />
       <div className="flex flex-1 flex-col p-5">
         <h3 className="text-2xl text-deep">{s.name}</h3>
         <p className="mt-1 flex-1 text-sm text-muted-foreground">{s.description}</p>

@@ -4,6 +4,7 @@ import { useCart, maxQty } from "@/lib/cart";
 import { cartCount, cartSubtotal, formatFCFA } from "@/lib/format";
 import { getProduct } from "@/data/products";
 import { PageTitle } from "@/components/layout";
+import { Img } from "@/components/app";
 
 export const Route = createFileRoute("/panier")({
   head: () => ({
@@ -34,7 +35,7 @@ function Cart() {
         <ul className="divide-y rounded-2xl border bg-card">
           {lines.map((l) => (
             <li key={l.id} className="flex gap-4 p-4">
-              <img src={getProduct(l.id)?.images[0]} alt="" className="h-20 w-20 rounded-lg object-cover" />
+              <Img src={getProduct(l.id)?.images[0]} alt="" sizes="96px" className="h-20 w-20 rounded-lg object-cover" />
               <div className="flex flex-1 flex-col gap-2">
                 <div className="flex justify-between gap-2">
                   <Link to="/boutique/$productId" params={{ productId: l.id }} className="font-display text-xl text-deep">{l.name}</Link>

@@ -4,6 +4,7 @@ import { services } from "@/data/services";
 import { settings } from "@/data/settings";
 import { bookingMessage, formatFCFA, isValidPhone, waLink } from "@/lib/format";
 import { PageTitle } from "@/components/layout";
+import { MobileBooking } from "@/components/mobile-booking";
 
 export const Route = createFileRoute("/reservation")({
   validateSearch: (s: Record<string, unknown>): { service?: string } =>
@@ -16,8 +17,18 @@ export const Route = createFileRoute("/reservation")({
       { property: "og:description", content: "Demande de réservation par WhatsApp, soumise à confirmation." },
     ],
   }),
-  component: Booking,
+  component: BookingPage,
 });
+
+function BookingPage() {
+  const { service } = Route.useSearch();
+  return (
+    <>
+      <div className="lg:hidden"><MobileBooking initialService={service} /></div>
+      <div className="hidden lg:block"><Booking /></div>
+    </>
+  );
+}
 
 function Booking() {
   const search = Route.useSearch();

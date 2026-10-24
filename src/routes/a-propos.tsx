@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import massage from "@/assets/massage.jpg.asset.json";
 import coiffure from "@/assets/coiffure.jpg.asset.json";
 import { PageTitle } from "@/components/layout";
+import { Img } from "@/components/app";
 
 export const Route = createFileRoute("/a-propos")({
   head: () => ({
@@ -25,7 +26,7 @@ function About() {
         </p>
       </section>
       <section className="mx-auto grid max-w-7xl gap-10 px-5 pb-16 md:grid-cols-2">
-        <img src={massage.url} alt="Espace massage Dalanda Beauty-Spa" loading="lazy" className="rounded-2xl" />
+        <Img src={massage.url} alt="Espace massage Dalanda Beauty-Spa" className="rounded-2xl" />
         <div className="self-center space-y-6">
           <div><h2 className="text-3xl text-deep">L'univers du bien-être</h2><p className="mt-2 text-muted-foreground">Un espace calme, pour se détendre et s'accorder une vraie pause.</p></div>
           <div><h2 className="text-3xl text-deep">Nos soins</h2><p className="mt-2 text-muted-foreground">Soins du visage, massages relaxants, soins du corps, coiffure et tresses, rituels spa.</p></div>
@@ -37,7 +38,7 @@ function About() {
           <div><h2 className="text-3xl text-deep">Une routine adaptée</h2><p className="mt-2 text-muted-foreground">Chaque peau est différente : choisir une routine qui vous correspond est essentiel. Demandez conseil à notre équipe.</p></div>
           <Link to="/reservation" className="btn btn-primary">Réserver un soin</Link>
         </div>
-        <img src={coiffure.url} alt="Coiffure Dalanda Beauty-Spa" loading="lazy" className="order-1 rounded-2xl md:order-2" />
+        <Img src={coiffure.url} alt="Coiffure Dalanda Beauty-Spa" className="order-1 rounded-2xl md:order-2" />
       </section>
     </>
   );

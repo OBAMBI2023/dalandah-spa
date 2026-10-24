@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Menu, X, ShoppingBag, Home, Sparkles, Store, Phone, MessageCircle, Facebook, MapPin } from "lucide-react";
+import { Menu, X, ShoppingBag, Phone, MessageCircle, Facebook, MapPin } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { cartCount, waLink } from "@/lib/format";
 import { settings } from "@/data/settings";
@@ -32,7 +32,7 @@ export function Header() {
     f(); window.addEventListener("scroll", f); return () => window.removeEventListener("scroll", f);
   }, []);
   return (
-    <header className={`sticky top-0 z-40 border-b bg-background/90 backdrop-blur transition-all ${scrolled ? "py-2 shadow-soft" : "py-4"}`}>
+    <header className={`sticky top-0 z-40 hidden border-b lg:block bg-background/90 backdrop-blur transition-all ${scrolled ? "py-2 shadow-soft" : "py-4"}`}>
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5">
         <Logo />
         <nav className="hidden items-center gap-7 lg:flex">
@@ -66,35 +66,12 @@ export function Header() {
   );
 }
 
-export function MobileBar() {
-  const { lines } = useCart();
-  const count = cartCount(lines);
-  const items = [
-    { to: "/", label: "Accueil", Icon: Home },
-    { to: "/soins", label: "Soins", Icon: Sparkles },
-    { to: "/boutique", label: "Boutique", Icon: Store },
-    { to: "/panier", label: "Panier", Icon: ShoppingBag },
-    { to: "/contact", label: "Contact", Icon: Phone },
-  ] as const;
-  return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/95 backdrop-blur lg:hidden">
-      {items.map(({ to, label, Icon }) => (
-        <Link key={to} to={to} activeOptions={{ exact: to === "/" }}
-          className="relative flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground data-[status=active]:text-primary">
-          <Icon className="h-5 w-5" />{label}
-          {to === "/panier" && count > 0 && <span className="absolute right-[28%] top-1.5 h-2 w-2 rounded-full bg-primary" />}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 export function WhatsAppFab() {
   const href = waLink("Bonjour Dalanda Beauty, j'aimerais avoir des informations.");
   if (!href) return null;
   return (
     <a href={href} target="_blank" rel="noreferrer" aria-label="Écrire sur WhatsApp"
-      className="fixed bottom-20 right-4 z-40 grid h-13 w-13 place-items-center rounded-full bg-sage p-3.5 text-sage-foreground shadow-soft transition hover:scale-105 lg:bottom-6">
+      className="fixed bottom-20 right-4 z-40 hidden h-13 w-13 place-items-center rounded-full bg-sage p-3.5 text-sage-foreground shadow-soft transition hover:scale-105 lg:bottom-6 lg:grid">
       <MessageCircle className="h-6 w-6" />
     </a>
   );
@@ -102,7 +79,7 @@ export function WhatsAppFab() {
 
 export function Footer() {
   return (
-    <footer className="bg-deep pb-24 pt-16 text-deep-foreground lg:pb-10">
+    <footer className="hidden bg-deep pb-24 pt-16 text-deep-foreground lg:block lg:pb-10">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 md:grid-cols-3">
         <div>
           <p className="font-display text-3xl tracking-[0.12em]">DALANDA</p>

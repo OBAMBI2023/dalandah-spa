@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  Outlet, Link, createRootRouteWithContext, useRouter, HeadContent, Scripts, type ErrorComponentProps,
+  Outlet, Link, createRootRouteWithContext, useRouter, useRouterState, HeadContent, Scripts, type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { CartProvider } from "@/lib/cart";
-import { Header, Footer, MobileBar, WhatsAppFab } from "@/components/layout";
+import { Header, Footer, WhatsAppFab } from "@/components/layout";
+import { AppTabBar } from "@/components/app";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -72,13 +73,23 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const isAdmin = useRouterState({ select: (s) => s.location.pathname.startsWith("/admin") });
+  if (isAdmin) {
+    // Le back-office a sa propre navigation : ni en-tête, ni pied de page, ni barre d'appli du site public.
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+        <Toaster position="top-center" />
+      </QueryClientProvider>
+    );
+  }
   return (
     <QueryClientProvider client={queryClient}>
       <CartProvider>
         <Header />
-        <main className="min-h-[60vh]"><Outlet /></main>
+        <main className="min-h-[60vh] lg:pb-0"><Outlet /></main>
         <Footer />
-        <MobileBar />
+        <AppTabBar />
         <WhatsAppFab />
         <Toaster position="top-center" />
       </CartProvider>
