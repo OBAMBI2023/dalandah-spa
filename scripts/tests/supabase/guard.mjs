@@ -1,0 +1,86 @@
+// Garde des privilèges : liste blanche des fonctions exécutables, SECURITY DEFINER, RLS et droits sur les tables.
+// Échoue dès qu'une migration ouvre un accès non prévu (par exemple une nouvelle fonction publique exécutable par anon).
+// Base PostgreSQL locale en mémoire (PGlite) : aucune connexion au projet Supabase distant.
+// Exécution : bun run test:sql:guard
+import { PGlite } from "@electric-sql/pglite";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const root = process.env.SUPABASE_DIR ?? fileURLToPath(new URL("../../../supabase", import.meta.url));
+const migrationSql = () => readdirSync(`${root}/migrations`).filter((f) => f.endsWith(".sql")).sort()
+  .map((f) => readFileSync(`${root}/migrations/${f}`, "utf8")).join("\n");
+
+const db = new PGlite();
+let pass = 0, fail = 0;
+const ok = (name, cond, extra = "") => { (cond ? pass++ : fail++); console.log(`${cond ? "PASS" : "FAIL"}  ${name}${cond ? "" : "  -> " + extra}`); };
+const q = async (sql, p = []) => (await db.query(sql, p)).rows;
+const set = (a) => [...a].sort().join(", ");
+
+await db.exec(`
+  create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+  create schema auth;
+  create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+  grant usage on schema public, auth to anon, authenticated, service_role;
+  grant execute on function auth.uid() to anon, authenticated;
+  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+`);
+await db.exec(migrationSql());
+await db.exec(readFileSync(`${root}/seed.sql`, "utf8"));
+
+// Fonctions réellement appelables par un rôle : droit EXECUTE ET droit USAGE sur le schéma.
+const callable = async (role) => (await q(
+  `select n.nspname || '.' || p.proname as fn from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
+      and has_schema_privilege($1, n.nspname, 'usage') and has_function_privilege($1, p.oid, 'execute')`, [role])).map((r) => r.fn);
+
+const PUBLIC_API = ["public.cancel_booking", "public.create_booking", "public.get_availability", "public.get_booking"];
+const anonFns = await callable("anon");
+ok("anon n'exécute que l'API publique prévue", set(anonFns) === set(PUBLIC_API), set(anonFns));
+const authFns = await callable("authenticated");
+// normalize_phone (pure, sans donnée) est évaluée par une colonne générée avec les droits de l'appelant : tolérée si présente.
+const AUTH_ALLOWED = [...PUBLIC_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
+ok("authenticated n'exécute que l'API publique et les helpers autorisés",
+  authFns.every((f) => AUTH_ALLOWED.includes(f)) && PUBLIC_API.every((f) => authFns.includes(f)), set(authFns));
+
+const defs = await q(`select n.nspname || '.' || p.proname as fn, p.prosecdef as definer,
+    exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c = 'search_path=""') as safe_path
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname in ('public', 'private') and p.prokind = 'f'`);
+const noPath = defs.filter((d) => d.definer && !d.safe_path).map((d) => d.fn);
+ok("toute fonction SECURITY DEFINER fixe search_path = ''", noPath.length === 0, set(noPath));
+const definerSet = defs.filter((d) => d.definer).map((d) => d.fn);
+ok("liste des fonctions SECURITY DEFINER connue",
+  set(definerSet) === set([...PUBLIC_API, "private.has_role", "private.is_admin", "private.rate_limit_hit"]), set(definerSet));
+ok("aucune fonction du schéma public n'est exécutable par PUBLIC sans être dans la liste blanche",
+  (await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.prokind = 'f' and p.proname <> all($1)
+              and (p.proacl is null or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))`,
+    [PUBLIC_API.map((f) => f.replace("public.", ""))])).length === 0);
+
+const tables = await q(`select n.nspname || '.' || c.relname as t, c.relrowsecurity as rls from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind = 'r'`);
+ok("RLS activée sur toutes les tables", tables.every((t) => t.rls), set(tables.filter((t) => !t.rls).map((t) => t.t)));
+
+const tp = async (role) => (await q(
+  `select table_schema || '.' || table_name as t, privilege_type as p from information_schema.table_privileges where grantee = $1 and table_schema in ('public','private')`, [role]));
+const anonT = Object.fromEntries((await tp("anon")).map((r) => [r.t + ":" + r.p, 1]));
+ok("anon : lecture seule de services, time_slots, salon_settings, rien d'autre",
+  set(Object.keys(anonT)) === set(["public.services:SELECT", "public.time_slots:SELECT", "public.salon_settings:SELECT"]), set(Object.keys(anonT)));
+const authT = await tp("authenticated");
+ok("aucun TRUNCATE, REFERENCES ni TRIGGER pour authenticated", !authT.some((r) => ["TRUNCATE", "REFERENCES", "TRIGGER"].includes(r.p)));
+ok("authenticated ne peut ni insérer ni supprimer dans bookings", !authT.some((r) => r.t === "public.bookings" && ["INSERT", "DELETE", "UPDATE"].includes(r.p)));
+ok("authenticated n'écrit pas dans user_roles", !authT.some((r) => r.t === "public.user_roles" && r.p !== "SELECT"));
+ok("authenticated n'a aucun droit sur le schéma private (tables)", !authT.some((r) => r.t.startsWith("private.")));
+
+const cols = (await q(`select column_name from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'bookings' and privilege_type = 'UPDATE'`)).map((r) => r.column_name);
+ok("seules 3 colonnes de bookings sont modifiables (status, cancelled_at, cancelled_by)", set(cols) === set(["status", "cancelled_at", "cancelled_by"]), set(cols));
+
+const pol = await q(`select tablename, cmd, roles::text as roles from pg_policies where schemaname = 'public'`);
+ok("aucune politique pour anon sur bookings, profiles, user_roles",
+  !pol.some((p) => ["bookings", "profiles", "user_roles"].includes(p.tablename) && /anon/.test(p.roles)));
+ok("aucune politique d'écriture sur user_roles", !pol.some((p) => p.tablename === "user_roles" && p.cmd !== "SELECT"));
+
+console.log(`\n${pass} réussis, ${fail} échoués`);
+process.exit(fail ? 1 : 0);
