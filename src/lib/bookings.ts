@@ -1,14 +1,18 @@
 import { useSyncExternalStore } from "react";
 import { settings } from "@/data/settings";
 
-// Stockage local provisoire : même interface qu'aura le backend (Supabase).
-// L'anti-doublon ne protège donc que cet appareil tant que le backend n'est pas branché.
+// Liste locale des réservations de cet appareil.
+// - Sans Supabase configuré (mode local) : c'est la seule source, l'anti-doublon ne protège que cet appareil.
+// - Avec Supabase (mode distant) : c'est un simple carnet de références {ref, téléphone, instantané} pour retrouver
+//   ses rendez-vous d'invité ; la vérité (statut, créneau) est côté serveur, voir src/lib/api.ts.
 export type Booking = {
   ref: string; serviceId: string; serviceName: string; duration: string; price: number;
-  date: string; // YYYY-MM-DD
-  slot: string; // HH:mm
+  date: string; // YYYY-MM-DD, heure d'Abidjan
+  slot: string; // HH:mm, heure d'Abidjan
   name: string; phone: string; comment: string;
   status: "confirmed" | "cancelled"; createdAt: string;
+  ends?: string;      // HH:mm, fin réelle calculée par le serveur (durée opérationnelle)
+  checkedAt?: string; // dernière synchronisation du statut avec le serveur (ISO)
 };
 
 export type Profile = { name: string; phone: string; email: string };
@@ -39,6 +43,7 @@ function subscribe(l: () => void) {
   return () => { listeners.delete(l); window.removeEventListener("storage", l); };
 }
 
+export const getBookings = () => read().bookings;
 export const useBookings = () => useSyncExternalStore(subscribe, () => read().bookings, () => EMPTY);
 export const useProfile = () => useSyncExternalStore(subscribe, () => read().profile, () => EMPTY_PROFILE);
 
@@ -63,13 +68,34 @@ export function cancelBooking(ref: string) {
   emit();
 }
 
+/** Ajoute (ou remplace) une réservation dans le carnet local : réservation confirmée par le serveur. */
+export function saveBooking(booking: Booking) {
+  const others = read().bookings.filter((b) => b.ref !== booking.ref);
+  try { localStorage.setItem(KEY, JSON.stringify([booking, ...others])); } catch { return false; }
+  emit();
+  return true;
+}
+
+/** Met à jour des champs d'une réservation du carnet local (statut, dernière synchronisation…). */
+export function updateBooking(ref: string, patch: Partial<Booking>) {
+  const next = read().bookings.map((b) => (b.ref === ref ? { ...b, ...patch } : b));
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { return; }
+  emit();
+}
+
 export function saveProfile(p: Profile) {
   try { localStorage.setItem(PKEY, JSON.stringify(p)); } catch { return; }
   emit();
 }
 
+/** Date du jour à Abidjan (YYYY-MM-DD). Abidjan est en UTC+0 toute l'année : pas de conversion de fuseau à faire. */
+export const abidjanToday = (now = new Date()) => now.toISOString().slice(0, 10);
+
+// Les dates et heures des réservations sont en heure d'Abidjan (UTC+0) : on les compare donc en UTC,
+// quel que soit le fuseau de l'appareil.
+export const startsAtMs = (b: Pick<Booking, "date" | "slot">) => Date.parse(`${b.date}T${b.slot}:00Z`);
 export const isUpcoming = (b: Booking, now = new Date()) =>
-  b.status === "confirmed" && new Date(`${b.date}T${b.slot}:00`) >= now;
+  b.status === "confirmed" && startsAtMs(b) >= now.getTime();
 
 export const endTime = (slot: string, duration: string) => {
   const m = duration.match(/(\d+)\s*h/); const mn = duration.match(/(\d+)\s*min/);

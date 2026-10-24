@@ -86,20 +86,26 @@ Couches en base (testées, limites provisoires) :
 
 À vérifier sur le projet réel : l'en-tête `cf-connecting-ip` est bien présent dans `request.headers`. À défaut, le limiteur retombe sur `x-forwarded-for` puis `unknown` (compteur partagé, donc plus strict).
 
-## Adaptations frontend nécessaires (non faites)
+## Branchement du frontend
 
-| Fichier | Aujourd'hui | À faire |
-|---|---|---|
-| `src/lib/bookings.ts` | stockage `localStorage`, anti-doublon local | appeler `get_availability`, `create_booking`, `get_booking`, `cancel_booking` ; garder localement seulement la liste `{ref, téléphone}` des réservations invitées |
-| Référence | `DLD-` + 6 caractères base 36 générés côté client | utiliser celle du serveur : `DLD-` + 10 hexadécimaux ; supprimer `newRef` |
-| Annulation | `cancelBooking(ref)` | `cancelBooking(ref, phone)` ; gérer `too_late`, `rate_limited` ; griser le bouton si `can_cancel` est faux |
-| Champs | `duration`, `price`, `serviceName`, `slot` | `duration_label`, `price_fcfa`, `service_name` ; `slot` lu en `HH:MM:SS` hors RPC : couper à 5 caractères |
-| Créneaux pris | `bookedSlots()` local | `get_availability(date, service)` : dépend du soin choisi |
-| `src/data/services.ts` | tableau en dur | lire `public.services` ; les images restent locales (`id` → image) tant que `image_url` est vide |
-| `src/data/settings.ts` | `timeSlots`, téléphones | `timeSlots` vient de `time_slots` ; lire `salon_settings` pour le préavis (2 h), les 180 jours, l'annulation |
-| Dates | `new Date()` du navigateur | calculer « aujourd'hui » et le préavis en heure d'Abidjan ; plafonner le calendrier à 180 jours |
-| Nom, téléphone | ≥ 2 caractères ; 8–15 chiffres | déjà identiques au serveur, rien à changer |
-| « Mes rendez-vous » | liste locale | connecté : `select` sur `bookings` (RLS) ; invité : `get_booking` par réservation enregistrée, à la demande (10 consultations/h par couple numéro + IP, 100/h par numéro) |
+Le frontend est branché (`src/lib/api.ts`, `src/lib/catalogue.ts`, `src/lib/supabase.ts`) mais **inactif tant que les variables d'environnement manquent** : sans elles, l'application reste en mode local (données du code, carnet de réservations sur l'appareil). Pour l'activer, après avoir appliqué la migration au projet : copier `.env.example` en `.env.local` (ignoré par git) et renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` (clés **publiques** uniquement, jamais `service_role`).
+
+| Sujet | Mode Supabase |
+|---|---|
+| Catalogue, créneaux, règles | lus dans `services`, `time_slots`, `salon_settings` ; les photos restent locales (rattachées par identifiant) ; la réservation attend les vrais tarifs |
+| Disponibilités | `get_availability(date, soin)` : tient compte de la durée, du préavis et des rendez-vous pris |
+| Réservation | `create_booking` : seul l'identifiant du soin est envoyé ; l'instantané local est ensuite aligné sur la réponse du serveur (prix, durée, nom du soin) ; double envoi bloqué |
+| Annulation | `cancel_booking(ref, téléphone)` ; refus clair au-delà du délai (« contactez le salon ») |
+| Mes rendez-vous | carnet local `{ref, téléphone}` ; statut resynchronisé par `get_booking` au plus une fois toutes les 10 min par rendez-vous (limites de consultation) |
+| Dates | « aujourd'hui » et les comparaisons sont en heure d'Abidjan (UTC+0), quel que soit le fuseau de l'appareil ; calendrier plafonné à 180 jours |
+| Erreurs | codes stables du serveur (`slot_unavailable`, `too_early`, `phone_limit`, `rate_limited`, `too_late`…) avec leurs messages ; réseau et serveur indisponibles gérés sans exception |
+
+**Pas encore fait :**
+- Connexion cliente (Supabase Auth) : les réservations restent des réservations invitées ; « Mes rendez-vous » vient du carnet local de l'appareil.
+- Le tableau d'administration reste sur les données du code et n'est pas sécurisé : il faut d'abord l'authentification, le MFA et les politiques d'administrateur (voir « Exigences avant la mise en production »).
+- Le site bureau (page Soins, boutique, réservation par WhatsApp) garde les données du code.
+- CAPTCHA et vérification du numéro (voir « Anti-abus »).
+- **Non testé de bout en bout** : aucun projet ne contient encore la migration. Le test `src/test/booking-api.contract.test.ts` exécute le code d'accès aux données contre les vraies fonctions SQL dans un PostgreSQL local en mémoire (transport HTTP simulé).
 
 ## Tests
 
