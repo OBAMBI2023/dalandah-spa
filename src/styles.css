@@ -32,6 +32,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-gold: var(--gold);
+  --color-gold-deep: var(--gold-deep);
   --color-sage: var(--sage);
   --color-sage-foreground: var(--sage-foreground);
   --color-deep: var(--deep);
@@ -41,30 +42,31 @@
 
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.993 0.007 85);       /* ivoire #FFFCF6 */
-  --foreground: oklch(0.26 0.012 55);        /* #29231F */
+  --background: oklch(0.978 0.014 88);       /* crème */
+  --foreground: oklch(0.25 0.02 165);        /* vert très sombre */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.26 0.012 55);
+  --card-foreground: oklch(0.25 0.02 165);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.26 0.012 55);
-  --primary: oklch(0.42 0.07 50);            /* chocolat #704025 */
+  --popover-foreground: oklch(0.25 0.02 165);
+  --primary: oklch(0.31 0.06 165);            /* vert profond */
   --primary-foreground: oklch(0.99 0.007 85);
-  --secondary: oklch(0.935 0.02 75);         /* beige #F2E8DA */
-  --secondary-foreground: oklch(0.29 0.04 45);
+  --secondary: oklch(0.945 0.02 88);         /* crème foncé */
+  --secondary-foreground: oklch(0.26 0.05 165);
   --muted: oklch(0.955 0.015 75);
   --muted-foreground: oklch(0.5 0.025 55);
-  --accent: oklch(0.79 0.1 88);              /* doré #D6B66B */
-  --accent-foreground: oklch(0.29 0.04 45);
-  --gold: oklch(0.79 0.1 88);
-  --sage: oklch(0.54 0.07 128);              /* vert #657B4B */
+  --accent: oklch(0.72 0.11 85);              /* doré */
+  --accent-foreground: oklch(0.26 0.05 165);
+  --gold: oklch(0.72 0.11 85);
+  --gold-deep: oklch(0.58 0.1 82);
+  --sage: oklch(0.45 0.07 160);               /* vert */
   --sage-foreground: oklch(0.99 0.007 85);
-  --deep: oklch(0.29 0.04 45);               /* brun profond #382117 */
-  --deep-foreground: oklch(0.95 0.02 80);
+  --deep: oklch(0.26 0.05 165);               /* vert profond */
+  --deep-foreground: oklch(0.96 0.02 88);
   --destructive: oklch(0.55 0.19 27);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.9 0.02 75);
   --input: oklch(0.88 0.02 75);
-  --ring: oklch(0.79 0.1 88);
+  --ring: oklch(0.72 0.11 85);
   --shadow-soft: 0 12px 40px -18px color-mix(in oklab, var(--deep) 35%, transparent);
 }
 
@@ -113,3 +115,12 @@
 
 @keyframes fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @utility animate-fade-up { animation: fade-up 0.8s ease both; }
+
+@utility btn-app {
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%); color: #fff;
+  &:hover { filter: brightness(1.06); }
+}
+@utility btn-app-outline {
+  border: 1px solid var(--gold-deep); color: var(--deep); background: var(--card);
+  &:hover { background: var(--secondary); }
+}
