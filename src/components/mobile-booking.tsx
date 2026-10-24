@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { fr } from "date-fns/locale";
 import { addDays, format, parseISO } from "date-fns";
 import { Check, CalendarPlus, User, Calendar as CalIcon, Clock, Timer, Wallet } from "lucide-react";
@@ -41,6 +41,7 @@ export function MobileBooking({ initialService }: { initialService?: string | un
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<Booking | null>(null);
+  const busy = useRef(false);  // verrou synchrone : deux clics avant le re-rendu ne doivent envoyer qu'une demande
 
   const service = services.find((s) => s.id === serviceId);
   const dateIso = date ? iso(date) : "";
@@ -71,8 +72,9 @@ export function MobileBooking({ initialService }: { initialService?: string | un
         <div className="px-4">
           <div className="rounded-2xl border bg-card p-5 shadow-soft">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-deep text-deep-foreground"><Check className="h-7 w-7" /></div>
-            <h2 className="mt-3 text-center text-2xl text-deep">Votre rendez-vous est enregistré !</h2>
-            <p className="mt-1 text-center text-xs text-muted-foreground">Référence <b className="text-deep">{done.ref}</b> · conservez-la pour consulter ou annuler</p>
+            <h2 className="mt-3 text-center text-2xl text-deep">Votre réservation est confirmée !</h2>
+            {!api.remote && <p role="status" className="mt-2 rounded-lg bg-secondary p-2 text-center text-xs">Mode local : cette réservation n'est enregistrée que sur cet appareil.</p>}
+            <p className="mt-2 text-center text-xs text-muted-foreground">Référence <b className="text-deep">{done.ref}</b> · conservez-la pour consulter ou annuler</p>
             <dl className="mt-4 divide-y text-sm">
               {rows.map(([Icon, k, v]) => (
                 <div key={k} className="flex items-center gap-3 py-2.5"><Icon className="h-4 w-4 text-gold-deep" /><dt className="w-14 text-muted-foreground">{k}</dt><dd className="ml-auto text-right">{v}</dd></div>
@@ -97,12 +99,14 @@ export function MobileBooking({ initialService }: { initialService?: string | un
   };
 
   const confirm = async () => {
-    if (!service || !date || !slot || submitting) return;  // empêche la double soumission
+    if (!service || !date || !slot || busy.current) return;  // empêche la double soumission
+    busy.current = true;
     setSubmitting(true);
     setError("");
     const r = await api.createBooking({ service, date: dateIso, slot, name, phone, comment });
     setSubmitting(false);
-    if (r.ok) { setDone(r.booking); return; }
+    if (r.ok) { setDone(r.booking); return; }  // le verrou reste posé : la réservation ne repart pas
+    busy.current = false;
     setError(r.error);
     if (["slot_unavailable", "too_early", "too_far", "invalid_input"].includes(r.code)) {
       setSlot("");
