@@ -4,6 +4,7 @@ import { LayoutDashboard, CalendarDays, Users, Sparkles, Settings, Menu, Externa
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LogoMark } from "@/components/app";
 import { SecurityBanner } from "@/components/admin";
+import { AdminGate } from "@/components/admin-gate";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration | Dalanda Beauty Spa" }, { name: "robots", content: "noindex, nofollow" }] }),
@@ -69,7 +70,7 @@ function AdminLayout() {
 
         <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-8 md:py-8">
           <SecurityBanner />
-          <Outlet />
+          <AdminGate><Outlet /></AdminGate>
         </main>
       </div>
     </div>

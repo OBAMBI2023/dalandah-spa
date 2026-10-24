@@ -4,25 +4,26 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DataState, PageHeader, Panel, type DataStatus } from "@/components/admin";
+import { DataState, PageHeader, Panel } from "@/components/admin";
 import { formatFCFA } from "@/lib/format";
-import type { Booking } from "@/lib/bookings";
+import { BOOKINGS_LIMIT, type AdminBooking } from "@/lib/admin-api";
+import { useAdminBookings, viewState } from "@/lib/admin-queries";
 
 export const Route = createFileRoute("/admin/reservations")({
   head: () => ({ meta: [{ title: "Réservations | Administration Dalanda" }] }),
   component: Reservations,
 });
 
-// Les rendez-vous du navigateur d'un visiteur ne sont pas des données d'établissement : on ne les affiche pas ici.
-const status: DataStatus = "unavailable";
-const rows: Booking[] = [];
-
-const statusLabel: Record<Booking["status"], string> = { confirmed: "Confirmée", cancelled: "Annulée" };
+const statusLabel: Record<AdminBooking["status"], string> = { confirmed: "Confirmée", cancelled: "Annulée" };
 
 function Reservations() {
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | Booking["status"]>("all");
-  const shown = rows.filter((b) => (filter === "all" || b.status === filter) && `${b.name} ${b.serviceName} ${b.ref}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const [filter, setFilter] = useState<"all" | AdminBooking["status"]>("all");
+  const query = useAdminBookings();
+  const rows = query.data ?? [];
+  const needle = q.trim().toLowerCase();
+  const shown = rows.filter((b) => (filter === "all" || b.status === filter) && `${b.name} ${b.serviceName} ${b.ref}`.toLowerCase().includes(needle));
+  const view = viewState(query, shown.length);
   return (
     <>
       <PageHeader title="Réservations" text="Suivez les rendez-vous et leurs statuts." />
@@ -41,7 +42,7 @@ function Reservations() {
             </SelectContent>
           </Select>
         </div>
-        <DataState status={status === "unavailable" ? status : shown.length ? "ready" : "empty"}>
+        <DataState {...view} onRetry={() => void query.refetch()}>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -50,14 +51,19 @@ function Reservations() {
               <TableBody>
                 {shown.map((b) => (
                   <TableRow key={b.ref}>
-                    <TableCell className="font-mono text-xs">{b.ref}</TableCell><TableCell>{b.name}</TableCell><TableCell>{b.serviceName}</TableCell>
-                    <TableCell>{b.date} · {b.slot}</TableCell><TableCell>{statusLabel[b.status]}</TableCell><TableCell className="text-right">{formatFCFA(b.price)}</TableCell>
+                    <TableCell className="font-mono text-xs">{b.ref}</TableCell>
+                    <TableCell>{b.name}<span className="block text-xs text-muted-foreground">{b.phone}</span></TableCell>
+                    <TableCell>{b.serviceName}</TableCell>
+                    <TableCell>{b.date} · {b.slot}</TableCell>
+                    <TableCell>{statusLabel[b.status]}</TableCell>
+                    <TableCell className="text-right">{formatFCFA(b.price)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         </DataState>
+        {rows.length >= BOOKINGS_LIMIT && <p className="border-t px-5 py-3 text-xs text-muted-foreground">Seules les {BOOKINGS_LIMIT} réservations les plus récentes sont chargées.</p>}
       </Panel>
     </>
   );

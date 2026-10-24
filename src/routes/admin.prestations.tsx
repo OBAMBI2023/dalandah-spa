@@ -11,11 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { PageHeader, Panel } from "@/components/admin";
+import { DataState, PageHeader, Panel } from "@/components/admin";
 import { Img } from "@/components/app";
-import { serviceCategories, services } from "@/data/services";
-import { settings } from "@/data/settings";
+import { serviceCategories, services as localServices } from "@/data/services";
 import { formatFCFA } from "@/lib/format";
+import { useAdminServices, viewState } from "@/lib/admin-queries";
 
 export const Route = createFileRoute("/admin/prestations")({
   head: () => ({ meta: [{ title: "Prestations | Administration Dalanda" }] }),
@@ -58,7 +58,7 @@ function NewServiceDialog() {
             <div><Label htmlFor="duration">Durée</Label><Input id="duration" className="mt-1" placeholder="45 min" {...register("duration")} />{err(errors.duration?.message)}</div>
             <div><Label htmlFor="price">Prix (FCFA)</Label><Input id="price" type="number" inputMode="numeric" className="mt-1" {...register("price")} />{err(errors.price?.message)}</div>
           </div>
-          <p className="rounded-lg bg-secondary p-3 text-xs text-muted-foreground">Aucune base de données n'est connectée : rien ne sera enregistré tant que ce n'est pas configuré.</p>
+          <p className="rounded-lg bg-secondary p-3 text-xs text-muted-foreground">L'enregistrement depuis cette interface n'est pas encore disponible : aucune prestation ne sera créée.</p>
           <button type="submit" disabled className="btn btn-primary w-full">Enregistrer (indisponible)</button>
         </form>
       </DialogContent>
@@ -69,13 +69,17 @@ function NewServiceDialog() {
 function Prestations() {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
+  const query = useAdminServices();
   const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const shown = services.filter((s) => (cat === "all" || s.category === cat) && norm(`${s.name} ${s.description}`).includes(norm(q.trim())));
+  const shown = (query.data ?? []).filter((s) => (cat === "all" || s.category === cat) && norm(`${s.name} ${s.description}`).includes(norm(q.trim())));
+  const demo = query.data?.some((s) => s.isDemo) ?? false;
+  // Les photos restent dans le code (rattachées par identifiant) : la base n'a pas encore d'image_url.
+  const imageOf = (id: string) => localServices.find((l) => l.id === id)?.image ?? "";
   const label = (id: string) => serviceCategories.find((c) => c.id === id)?.label ?? id;
   return (
     <>
       <PageHeader title="Prestations" text="Catalogue et tarifs proposés aux clientes." actions={<NewServiceDialog />} />
-      {settings.demoPrices && <p className="rounded-xl bg-gold/10 px-4 py-2.5 text-sm text-deep">Tarifs et durées de démonstration : à remplacer par les tarifs officiels. Ce catalogue est défini dans le code et n'est pas encore modifiable ici.</p>}
+      {demo && <p className="rounded-xl bg-gold/10 px-4 py-2.5 text-sm text-deep">Tarifs et durées de démonstration : à remplacer par les tarifs officiels. Ce catalogue est lu depuis la base et n'est pas encore modifiable ici.</p>}
       <Panel>
         <div className="flex flex-wrap gap-3 border-b p-4">
           <div className="relative min-w-52 flex-1">
@@ -90,9 +94,7 @@ function Prestations() {
             </SelectContent>
           </Select>
         </div>
-        {shown.length === 0 ? (
-          <p role="status" className="px-6 py-12 text-center text-sm text-muted-foreground">Aucune prestation ne correspond à votre recherche.</p>
-        ) : (
+        <DataState {...viewState(query, shown.length)} onRetry={() => void query.refetch()}>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader><TableRow><TableHead>Prestation</TableHead><TableHead>Catégorie</TableHead><TableHead>Durée</TableHead><TableHead className="text-right">Prix</TableHead></TableRow></TableHeader>
@@ -101,19 +103,19 @@ function Prestations() {
                   <TableRow key={s.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Img src={s.image} sizes="96px" className="h-10 w-10 shrink-0 rounded-lg" />
-                        <div><p className="font-medium text-deep">{s.name}</p><p className="line-clamp-1 text-xs text-muted-foreground">{s.description}</p></div>
+                        <Img src={imageOf(s.id)} sizes="96px" className="h-10 w-10 shrink-0 rounded-lg" />
+                        <div><p className="font-medium text-deep">{s.name}{!s.active && <Badge variant="outline" className="ml-2">Inactive</Badge>}</p><p className="line-clamp-1 text-xs text-muted-foreground">{s.description}</p></div>
                       </div>
                     </TableCell>
                     <TableCell><Badge variant="secondary">{label(s.category)}</Badge></TableCell>
-                    <TableCell>{s.duration}</TableCell>
+                    <TableCell>{s.durationLabel}</TableCell>
                     <TableCell className="text-right">{formatFCFA(s.price)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
-        )}
+        </DataState>
       </Panel>
     </>
   );

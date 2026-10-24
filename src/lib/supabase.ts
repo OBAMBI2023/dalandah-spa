@@ -12,3 +12,12 @@ export const supabase: SupabaseClient | null =
 
 /** true : réservations et catalogue passent par Supabase. false : mode local. */
 export const isRemote = supabase !== null;
+
+/**
+ * Client réservé à l'administration : il garde la session de connexion (les visiteurs, eux, restent anonymes, voir ci-dessus).
+ * Les droits viennent de la base (rôle `admin` dans `user_roles` + RLS), jamais de ce code.
+ */
+export const adminSupabase: SupabaseClient | null =
+  url && key
+    ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "dalanda.admin.auth" } })
+    : null;

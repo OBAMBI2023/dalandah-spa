@@ -24,7 +24,7 @@ export function SecurityBanner() {
       <AlertTriangle className="h-4 w-4 text-gold-deep" />
       <AlertTitle>Espace non sécurisé</AlertTitle>
       <AlertDescription>
-        Aucune authentification ni autorisation côté serveur n'est en place : cette interface est publique et ne doit pas être déployée en production en l'état.
+        Toutes les pages exigent une connexion administrateur et les données sont protégées par la base (RLS). L'authentification à deux facteurs (MFA) n'est pas en place et la modification des données n'est pas disponible : n'exposez pas cette interface en production en l'état.
       </AlertDescription>
     </Alert>
   );
@@ -37,7 +37,7 @@ const messages: Record<Exclude<DataStatus, "ready" | "loading">, { Icon: typeof 
 };
 
 /** Affiche l'état chargement / erreur / vide / indisponible, ou les enfants lorsque les données sont prêtes. */
-export function DataState({ status, children, onRetry }: { status: DataStatus; children?: ReactNode; onRetry?: () => void }) {
+export function DataState({ status, children, onRetry, title, text }: { status: DataStatus; children?: ReactNode; onRetry?: () => void; title?: string; text?: string }) {
   if (status === "ready") return <>{children}</>;
   if (status === "loading") {
     return (
@@ -46,12 +46,13 @@ export function DataState({ status, children, onRetry }: { status: DataStatus; c
       </div>
     );
   }
-  const { Icon, title, text } = messages[status];
+  const m = messages[status];
+  const Icon = m.Icon;
   return (
     <div role={status === "error" ? "alert" : "status"} className="flex flex-col items-center px-6 py-12 text-center">
       <Icon className="h-8 w-8 text-sage" strokeWidth={1.4} />
-      <p className="mt-3 font-display text-xl text-deep">{title}</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{text}</p>
+      <p className="mt-3 font-display text-xl text-deep">{title ?? m.title}</p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{text ?? m.text}</p>
       {status === "error" && onRetry && (
         <button onClick={onRetry} className="btn btn-outline mt-4"><RefreshCw className="h-4 w-4" />Réessayer</button>
       )}
