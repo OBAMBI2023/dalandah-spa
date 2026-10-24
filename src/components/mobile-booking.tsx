@@ -1,13 +1,15 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { fr } from "date-fns/locale";
-import { format } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { Check, CalendarPlus, User, Calendar as CalIcon, Clock, Timer, Wallet } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import { services } from "@/data/services";
 import { settings } from "@/data/settings";
 import { formatFCFA, isValidPhone } from "@/lib/format";
-import { bookedSlots, createBooking, endTime, longDate, useBookings, useProfile, type Booking } from "@/lib/bookings";
+import { abidjanToday, endTime, longDate, useProfile, type Booking } from "@/lib/bookings";
+import { api } from "@/lib/api";
+import { useCatalogue } from "@/lib/catalogue";
 import { AppBar, Screen, Stepper, Img } from "@/components/app";
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
@@ -16,8 +18,8 @@ function calendarFile(b: Booking) {
   const stamp = (date: string, t: string) => `${date.replaceAll("-", "")}T${t.replace(":", "")}00`;
   const ics = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Dalanda Beauty Spa//FR", "BEGIN:VEVENT",
-    `UID:${b.ref}@dalanda`, `DTSTAMP:${stamp(iso(new Date()), "00:00")}`,
-    `DTSTART:${stamp(b.date, b.slot)}`, `DTEND:${stamp(b.date, endTime(b.slot, b.duration))}`,
+    `UID:${b.ref}@dalanda`, `DTSTAMP:${stamp(abidjanToday(), "00:00")}`,
+    `DTSTART:${stamp(b.date, b.slot)}`, `DTEND:${stamp(b.date, b.ends ?? endTime(b.slot, b.duration))}`,
     `SUMMARY:${b.serviceName} - Dalanda Beauty Spa`, `LOCATION:${settings.address}`, `DESCRIPTION:Référence ${b.ref}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
@@ -25,10 +27,11 @@ function calendarFile(b: Booking) {
 }
 
 export function MobileBooking({ initialService }: { initialService?: string | undefined }) {
-  const bookings = useBookings();
   const profile = useProfile();
+  const catalogue = useCatalogue();
+  const { services, rules } = catalogue;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [serviceId, setServiceId] = useState(services.some((s) => s.id === initialService) ? initialService! : "");
+  const [serviceId, setServiceId] = useState(initialService ?? "");
   const [date, setDate] = useState<Date | undefined>();
   const [slot, setSlot] = useState("");
   const [name, setName] = useState(profile.name);
@@ -36,13 +39,26 @@ export function MobileBooking({ initialService }: { initialService?: string | un
   const [comment, setComment] = useState("");
   const [tried, setTried] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<Booking | null>(null);
 
   const service = services.find((s) => s.id === serviceId);
   const dateIso = date ? iso(date) : "";
-  const taken = useMemo(() => (dateIso ? bookedSlots(bookings, dateIso) : []), [bookings, dateIso]);
   const nameOk = name.trim().length >= 2, phoneOk = isValidPhone(phone);
-  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  // « Aujourd'hui » est la date d'Abidjan, pas celle de l'appareil.
+  const today = parseISO(abidjanToday());
+  const lastDay = addDays(today, rules.maxDaysAhead);
+
+  const availability = useQuery({
+    queryKey: ["availability", dateIso, service?.id],
+    queryFn: () => api.getAvailability(dateIso, service!),
+    enabled: step === 3 && !!service && !!dateIso,
+    staleTime: 0,
+    gcTime: 0,
+    retry: 1,
+  });
+  const slots = availability.data ?? [];
+  const anyFree = slots.some((s) => s.available);
 
   if (done) {
     const rows: [typeof User, string, string][] = [
@@ -56,7 +72,7 @@ export function MobileBooking({ initialService }: { initialService?: string | un
           <div className="rounded-2xl border bg-card p-5 shadow-soft">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-deep text-deep-foreground"><Check className="h-7 w-7" /></div>
             <h2 className="mt-3 text-center text-2xl text-deep">Votre rendez-vous est enregistré !</h2>
-            <p className="mt-1 text-center text-xs text-muted-foreground">Référence <b className="text-deep">{done.ref}</b> · à confirmer par l'établissement</p>
+            <p className="mt-1 text-center text-xs text-muted-foreground">Référence <b className="text-deep">{done.ref}</b> · conservez-la pour consulter ou annuler</p>
             <dl className="mt-4 divide-y text-sm">
               {rows.map(([Icon, k, v]) => (
                 <div key={k} className="flex items-center gap-3 py-2.5"><Icon className="h-4 w-4 text-gold-deep" /><dt className="w-14 text-muted-foreground">{k}</dt><dd className="ml-auto text-right">{v}</dd></div>
@@ -72,18 +88,27 @@ export function MobileBooking({ initialService }: { initialService?: string | un
 
   const next = () => {
     setTried(true);
-    if (step === 1 && !service) return;
+    if (step === 1 && (!service || !catalogue.loaded)) return;
     if (step === 2 && !date) return;
     if (step === 3 && (!slot || !nameOk || !phoneOk)) return;
     setTried(false);
+    setError("");
     setStep((step + 1) as 2 | 3 | 4);
   };
 
-  const confirm = () => {
-    if (!service || !date || !slot) return;
-    const r = createBooking({ serviceId: service.id, serviceName: service.name, duration: service.duration, price: service.price, date: dateIso, slot, name: name.trim(), phone: phone.trim(), comment: comment.trim() });
-    if (!r.ok) { setError(r.error); setSlot(""); setStep(3); return; }
-    setDone(r.booking);
+  const confirm = async () => {
+    if (!service || !date || !slot || submitting) return;  // empêche la double soumission
+    setSubmitting(true);
+    setError("");
+    const r = await api.createBooking({ service, date: dateIso, slot, name, phone, comment });
+    setSubmitting(false);
+    if (r.ok) { setDone(r.booking); return; }
+    setError(r.error);
+    if (["slot_unavailable", "too_early", "too_far", "invalid_input"].includes(r.code)) {
+      setSlot("");
+      setStep(3);
+      void availability.refetch();
+    }
   };
 
   const err = (cond: boolean, msg: string) => tried && cond ? <p role="alert" className="mt-1 text-xs text-destructive">{msg}</p> : null;
@@ -93,7 +118,13 @@ export function MobileBooking({ initialService }: { initialService?: string | un
       <AppBar title="Réservation" back={step === 1} />
       <Stepper step={step} />
       <div className="px-4 pt-5">
-        {step > 1 && <button onClick={() => { setTried(false); setStep((step - 1) as 1 | 2 | 3); }} className="mb-3 text-xs text-gold-deep underline">← Étape précédente</button>}
+        {step > 1 && <button onClick={() => { setTried(false); setError(""); setStep((step - 1) as 1 | 2 | 3); }} className="mb-3 text-xs text-gold-deep underline">← Étape précédente</button>}
+
+        {catalogue.isError && (
+          <div role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+            Impossible de charger les tarifs en ligne. <button className="underline" onClick={catalogue.refetch}>Réessayer</button>
+          </div>
+        )}
 
         {step === 1 && (
           <>
@@ -111,6 +142,7 @@ export function MobileBooking({ initialService }: { initialService?: string | un
               ))}
             </ul>
             {err(!service, "Choisissez un soin pour continuer.")}
+            {tried && service && !catalogue.loaded && !catalogue.isError && <p role="status" className="mt-1 text-xs text-muted-foreground">Chargement des tarifs…</p>}
           </>
         )}
 
@@ -118,8 +150,10 @@ export function MobileBooking({ initialService }: { initialService?: string | un
           <>
             <h2 className="text-lg text-deep">Choisissez la date</h2>
             <div className="mt-3 flex justify-center rounded-2xl border bg-card p-2 shadow-soft">
-              <Calendar mode="single" locale={fr} weekStartsOn={1} selected={date} onSelect={setDate} disabled={{ before: today }} defaultMonth={date ?? today} className="[--cell-size:2.4rem]" />
+              <Calendar mode="single" locale={fr} weekStartsOn={1} selected={date} onSelect={setDate}
+                disabled={{ before: today, after: lastDay }} defaultMonth={date ?? today} className="[--cell-size:2.4rem]" />
             </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">Réservation possible au moins {rules.minNoticeHours} h à l'avance, jusqu'à {rules.maxDaysAhead} jours.</p>
             {err(!date, "Choisissez une date pour continuer.")}
           </>
         )}
@@ -128,14 +162,16 @@ export function MobileBooking({ initialService }: { initialService?: string | un
           <>
             <h2 className="text-lg text-deep">Choisissez l'heure</h2>
             {error && <p role="alert" className="mt-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">{error}</p>}
+            {availability.isLoading && <p role="status" className="mt-3 text-sm text-muted-foreground">Chargement des créneaux…</p>}
+            {availability.isError && (
+              <p role="alert" className="mt-3 text-sm text-destructive">Créneaux indisponibles pour le moment. <button className="underline" onClick={() => void availability.refetch()}>Réessayer</button></p>
+            )}
+            {availability.isSuccess && !anyFree && <p role="status" className="mt-3 text-sm text-muted-foreground">Aucun créneau disponible ce jour-là. Choisissez une autre date.</p>}
             <div className="mt-3 grid grid-cols-3 gap-2">
-              {settings.timeSlots.map((t) => {
-                const off = taken.includes(t);
-                return (
-                  <button key={t} disabled={off} aria-pressed={slot === t} onClick={() => { setSlot(t); setError(""); }}
-                    className={`rounded-full border py-2.5 text-sm ${slot === t ? "border-deep bg-deep text-deep-foreground" : "bg-card"} ${off ? "cursor-not-allowed text-muted-foreground line-through opacity-50" : ""}`}>{t}</button>
-                );
-              })}
+              {slots.map(({ slot: t, available }) => (
+                <button key={t} disabled={!available} aria-pressed={slot === t} onClick={() => { setSlot(t); setError(""); }}
+                  className={`rounded-full border py-2.5 text-sm ${slot === t ? "border-deep bg-deep text-deep-foreground" : "bg-card"} ${!available ? "cursor-not-allowed text-muted-foreground line-through opacity-50" : ""}`}>{t}</button>
+              ))}
             </div>
             {err(!slot, "Choisissez un créneau.")}
             <div className="mt-5 space-y-3">
@@ -149,16 +185,19 @@ export function MobileBooking({ initialService }: { initialService?: string | un
         {step === 4 && service && date && (
           <>
             <h2 className="text-lg text-deep">Vérifiez votre réservation</h2>
+            {error && <p role="alert" className="mt-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">{error}</p>}
             <dl className="mt-3 divide-y rounded-2xl border bg-card px-4 text-sm shadow-soft">
               {[["Soin", service.name], ["Date", longDate(dateIso)], ["Heure", slot], ["Durée", service.duration], ["Prix", formatFCFA(service.price)], ["Nom", name], ["Téléphone", phone]].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 py-2.5"><dt className="text-muted-foreground">{k}</dt><dd className="text-right">{v}</dd></div>
               ))}
             </dl>
-            <p className="mt-3 text-[11px] text-muted-foreground">Tarif et durée indicatifs. Votre rendez-vous sera confirmé par l'établissement.</p>
+            <p className="mt-3 text-[11px] text-muted-foreground">Tarif et durée indicatifs, à confirmer par l'établissement.</p>
           </>
         )}
 
-        <button onClick={step === 4 ? confirm : next} className="btn btn-app mt-6 w-full">{step === 4 ? "Confirmer la réservation" : "Continuer"}</button>
+        <button onClick={step === 4 ? confirm : next} disabled={submitting || (step === 4 && !catalogue.loaded)} className="btn btn-app mt-6 w-full">
+          {submitting ? "Enregistrement…" : step === 4 ? "Confirmer la réservation" : "Continuer"}
+        </button>
       </div>
     </Screen>
   );

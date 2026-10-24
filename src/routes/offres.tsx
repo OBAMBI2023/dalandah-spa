@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { offers, discounted } from "@/data/offers";
-import { services } from "@/data/services";
+import { useCatalogue } from "@/lib/catalogue";
 import { formatFCFA } from "@/lib/format";
 import { AppBar, Screen, Img } from "@/components/app";
 
@@ -10,6 +10,7 @@ export const Route = createFileRoute("/offres")({
 });
 
 function Offres() {
+  const { services } = useCatalogue();
   return (
     <Screen>
       <AppBar title="Nos offres" back={false} />

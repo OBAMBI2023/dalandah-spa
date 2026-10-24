@@ -1,22 +1,35 @@
-import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ChevronLeft, Clock } from "lucide-react";
-import { services } from "@/data/services";
 import { formatFCFA } from "@/lib/format";
-import { Screen, Img } from "@/components/app";
+import { useCatalogue } from "@/lib/catalogue";
+import { AppBar, Screen, Img } from "@/components/app";
 
 export const Route = createFileRoute("/prestations/$serviceId")({
-  loader: ({ params }) => {
-    const service = services.find((s) => s.id === params.serviceId);
-    if (!service) throw notFound();
-    return service;
-  },
-  head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.name ?? "Soin"} | Dalanda Beauty Spa` }, { name: "description", content: loaderData?.description ?? "" }] }),
+  head: () => ({ meta: [{ title: "Prestation | Dalanda Beauty Spa" }] }),
   component: Detail,
 });
 
 function Detail() {
-  const s = Route.useLoaderData();
+  const { serviceId } = Route.useParams();
+  const { services, loaded, isError } = useCatalogue();
   const router = useRouter();
+  const s = services.find((x) => x.id === serviceId);
+
+  if (!s) {
+    // Le catalogue distant peut ne pas être encore chargé : on n'affiche « introuvable » qu'une fois la réponse reçue.
+    return (
+      <Screen>
+        <AppBar title="Prestation" />
+        <div className="px-6 pt-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            {!loaded && !isError ? "Chargement…" : isError ? "Impossible de charger la prestation pour le moment." : "Cette prestation n'existe pas ou n'est plus proposée."}
+          </p>
+          <Link to="/prestations" search={{}} className="btn btn-app-outline mt-4">Voir toutes les prestations</Link>
+        </div>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <div className="relative h-64">

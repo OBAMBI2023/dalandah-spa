@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { ChevronRight, Clock, Phone } from "lucide-react";
 import { formatFCFA } from "@/lib/format";
 import { settings } from "@/data/settings";
-import { cancelBooking, endTime, isUpcoming, useBookings, type Booking } from "@/lib/bookings";
+import { endTime, isUpcoming, startsAtMs, useBookings, type Booking } from "@/lib/bookings";
+import { api } from "@/lib/api";
+import { useCatalogue } from "@/lib/catalogue";
 import { AppBar, Screen } from "@/components/app";
 
 export const Route = createFileRoute("/rendez-vous")({
@@ -11,9 +13,24 @@ export const Route = createFileRoute("/rendez-vous")({
   component: Rdv,
 });
 
-function Card({ b, upcoming }: { b: Booking; upcoming: boolean }) {
+const RECHECK_MS = 10 * 60_000; // la consultation est limitée côté serveur : on ne resynchronise pas plus souvent
+
+function Card({ b, upcoming, cancelNoticeHours }: { b: Booking; upcoming: boolean; cancelNoticeHours: number }) {
+  const { rules } = useCatalogue();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const d = new Date(`${b.date}T12:00:00`);
   const cancelled = b.status === "cancelled";
+  const canCancel = upcoming && startsAtMs(b) >= Date.now() + cancelNoticeHours * 3600_000;
+
+  const cancel = async () => {
+    if (busy || !window.confirm("Annuler ce rendez-vous ?")) return;  // busy : pas de double envoi
+    setBusy(true); setMsg("");
+    const r = await api.cancelBooking(b, rules);
+    setBusy(false);
+    if (!r.ok) setMsg(r.error);
+  };
+
   return (
     <li className="rounded-2xl border bg-card p-4 shadow-soft">
       <div className="flex gap-4">
@@ -24,7 +41,7 @@ function Card({ b, upcoming }: { b: Booking; upcoming: boolean }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-deep">{b.serviceName}</p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{b.slot} - {endTime(b.slot, b.duration)}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{b.slot} - {b.ends ?? endTime(b.slot, b.duration)}</p>
           <p className="mt-0.5 text-sm text-deep">{formatFCFA(b.price)}</p>
           <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${cancelled ? "bg-destructive/10 text-destructive" : upcoming ? "bg-green-100 text-green-800" : "bg-secondary text-muted-foreground"}`}>
             {cancelled ? "Annulé" : upcoming ? "Enregistré" : "Terminé"}
@@ -33,18 +50,34 @@ function Card({ b, upcoming }: { b: Booking; upcoming: boolean }) {
         </div>
         <ChevronRight className="h-4 w-4 self-center text-muted-foreground" />
       </div>
-      {upcoming && (
-        <button onClick={() => { if (window.confirm("Annuler ce rendez-vous ?")) cancelBooking(b.ref); }} className="mt-3 text-xs text-destructive underline">Annuler ce rendez-vous</button>
+      {canCancel && (
+        <button onClick={cancel} disabled={busy} className="mt-3 text-xs text-destructive underline disabled:opacity-50">{busy ? "Annulation…" : "Annuler ce rendez-vous"}</button>
       )}
+      {upcoming && !canCancel && !cancelled && (
+        <p className="mt-3 text-xs text-muted-foreground">Annulation impossible moins de {cancelNoticeHours} h avant le rendez-vous : contactez le salon au {settings.phones[0]}.</p>
+      )}
+      {msg && <p role="alert" className="mt-2 text-xs text-destructive">{msg}</p>}
     </li>
   );
 }
 
 function Rdv() {
   const bookings = useBookings();
+  const { rules } = useCatalogue();
   const [tab, setTab] = useState<"next" | "past">("next");
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => setNow(new Date()), []);
+
+  // Mode Supabase : resynchronise le statut des rendez-vous à venir (annulation par le salon, changement d'horaire).
+  useEffect(() => {
+    if (!api.remote || !now) return;
+    const due = bookings.filter((b) => isUpcoming(b, now) && Date.now() - Date.parse(b.checkedAt ?? "1970-01-01") > RECHECK_MS);
+    let stop = false;
+    (async () => { for (const b of due) { if (stop) return; await api.refreshBooking(b); } })();
+    return () => { stop = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, bookings.length]);
+
   const upcoming = now ? bookings.filter((b) => isUpcoming(b, now)) : [];
   const past = now ? bookings.filter((b) => !isUpcoming(b, now)) : [];
   const list = tab === "next" ? upcoming : past;
@@ -58,7 +91,7 @@ function Rdv() {
           <button role="tab" aria-selected={tab === "past"} className={tabCls(tab === "past")} onClick={() => setTab("past")}>Passés</button>
         </div>
         <ul className="mt-4 space-y-3">
-          {list.map((b) => <Card key={b.ref} b={b} upcoming={tab === "next"} />)}
+          {list.map((b) => <Card key={b.ref} b={b} upcoming={tab === "next"} cancelNoticeHours={rules.cancelNoticeHours} />)}
         </ul>
         {now && list.length === 0 && (
           <div className="mt-10 text-center">

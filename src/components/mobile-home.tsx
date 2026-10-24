@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Bell, Calendar, Smile, User, Scissors, Flower2, Hand, Tag, ArrowRight, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import hero from "@/assets/hero.jpg";
-import { services } from "@/data/services";
+import { useCatalogue } from "@/lib/catalogue";
 import { offers, discounted } from "@/data/offers";
 import { settings } from "@/data/settings";
 import { formatFCFA } from "@/lib/format";
@@ -17,7 +17,9 @@ const shortcuts = [
 ];
 
 export function MobileHome() {
-  const featured = services.filter((s) => ["soin-visage-eclat", "massage-relaxant"].includes(s.id));
+  const { services } = useCatalogue();
+  const picked = services.filter((s) => ["soin-visage-eclat", "massage-relaxant"].includes(s.id));
+  const featured = picked.length === 2 ? picked : services.slice(0, 2);
   return (
     <div className="lg:hidden">
       <Screen>

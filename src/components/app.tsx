@@ -72,7 +72,7 @@ export function AppTabBar() {
 }
 
 type ImgProps = {
-  src: string; alt?: string; className?: string;
+  src?: string | undefined; alt?: string; className?: string;
   /** Largeur d'affichage réelle (attribut sizes) : évite de télécharger une version plus grande que nécessaire. */
   sizes?: string;
   /** Image principale visible immédiatement : chargée tout de suite, jamais en différé. */

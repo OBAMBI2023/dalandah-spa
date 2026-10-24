@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Clock, Search, X } from "lucide-react";
-import { services, serviceCategories, type ServiceCategory } from "@/data/services";
+import { serviceCategories, type ServiceCategory } from "@/data/services";
+import { useCatalogue } from "@/lib/catalogue";
 import { formatFCFA } from "@/lib/format";
 import { LogoMark, Screen, Img } from "@/components/app";
 
@@ -21,6 +22,7 @@ const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").to
 
 function Prestations() {
   const { categorie } = Route.useSearch();
+  const { services } = useCatalogue();
   const navigate = useNavigate({ from: "/prestations/" });
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
