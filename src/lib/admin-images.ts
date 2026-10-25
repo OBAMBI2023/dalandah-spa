@@ -1,6 +1,7 @@
 import { adminSupabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/images";
 import { AdminError, classify } from "@/lib/admin-api";
+import { listAdminProducts, setProductImage } from "@/lib/admin-products";
 
 // Photos du catalogue dans Supabase Storage (bucket public `catalog-images`, écriture réservée aux administrateurs
 // par les politiques de supabase/migrations/20261025000000_catalog_images_storage.sql).
@@ -118,4 +119,75 @@ export async function removeServiceImage(serviceId: string, currentUrl: string |
   if (error) throw classify(error, "Suppression de la photo");
   if (!data?.length) throw new AdminError("forbidden", "Accès refusé.");
   await deleteIfUnused(serviceId, currentUrl);
+}
+
+// --- Photos des produits (même bucket, dossier products/<id>/) ---
+
+/** Chemin d'objet unique pour un produit : l'ancienne photo reste en place jusqu'au succès du remplacement. */
+export function newProductImagePath(productId: string, now = Date.now(), rand = Math.random().toString(36).slice(2, 8)) {
+  return `products/${productId}/${now}-${rand}.webp`;
+}
+
+/**
+ * Supprime l'objet de l'ancienne photo seulement si plus aucun produit (inactifs compris, via admin_list_products) ni aucune
+ * prestation ne le référence. Au moindre doute (lecture impossible, erreur), le fichier est conservé.
+ */
+async function deleteProductImageIfUnused(productId: string, oldUrl: string | null | undefined) {
+  const path = pathFromPublicUrl(oldUrl);
+  if (!path) return;
+  try {
+    const c = client();
+    const products = await listAdminProducts();
+    if (products.some((p) => p.id !== productId && p.imageUrl === oldUrl)) return;
+    const { count, error } = await c.from("services").select("id", { count: "exact", head: true }).eq("image_url", oldUrl!);
+    if (error || (count ?? 0) > 0) return;
+    await c.storage.from(IMAGE_BUCKET).remove([path]);
+  } catch {
+    /* conserver le fichier : un objet en trop coûte moins qu'une photo supprimée à tort */
+  }
+}
+
+/**
+ * Téléverse une photo (réduite en WebP) puis l'enregistre sur le produit avec admin_set_product_image.
+ * Ordre : 1. envoi du nouvel objet · 2. référence en base · 3. suppression de l'ancien objet s'il n'est plus utilisé.
+ * Si l'étape 2 échoue, le nouvel objet est retiré et la photo actuelle reste inchangée.
+ */
+export async function uploadProductImage(productId: string, file: File, currentUrl: string | null): Promise<string> {
+  const invalid = validateImageFile(file);
+  if (invalid) throw new AdminError("server", invalid);
+  const c = client();
+
+  let blob: Blob;
+  try {
+    blob = await compressImage(file);
+  } catch {
+    throw new AdminError("server", "Cette image n'a pas pu être lue. Essayez un autre fichier.");
+  }
+  if (blob.size > MAX_IMAGE_BYTES) throw new AdminError("server", `Image trop lourde (${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)} Mo maximum après compression).`);
+
+  const path = newProductImagePath(productId);
+  let up: { error: { message?: string; statusCode?: string | number } | null };
+  try {
+    const r = await c.storage.from(IMAGE_BUCKET).upload(path, blob, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
+    up = { error: r.error as { message?: string; statusCode?: string | number } | null };
+  } catch (e) {
+    throw storageError({ message: e instanceof Error ? e.message : "network" }, "Téléversement");
+  }
+  if (up.error) throw storageError(up.error, "Téléversement");
+
+  const url = c.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  try {
+    await setProductImage(productId, url);
+  } catch (e) {
+    await c.storage.from(IMAGE_BUCKET).remove([path]);
+    throw e;
+  }
+  await deleteProductImageIfUnused(productId, currentUrl);
+  return url;
+}
+
+/** Retire la photo d'un produit : référence effacée d'abord, puis objet supprimé s'il n'est plus utilisé ailleurs. */
+export async function removeProductImage(productId: string, currentUrl: string | null): Promise<void> {
+  await setProductImage(productId, null);
+  await deleteProductImageIfUnused(productId, currentUrl);
 }

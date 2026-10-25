@@ -27,6 +27,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminClientsRouteImport } from './routes/admin.clients'
 import { Route as AdminParametresRouteImport } from './routes/admin.parametres'
 import { Route as AdminPrestationsRouteImport } from './routes/admin.prestations'
+import { Route as AdminProduitsRouteImport } from './routes/admin.produits'
 import { Route as AdminReservationsRouteImport } from './routes/admin.reservations'
 import { Route as BoutiqueProductIdRouteImport } from './routes/boutique.$productId'
 import { Route as PrestationsIndexRouteImport } from './routes/prestations.index'
@@ -122,6 +123,11 @@ const AdminPrestationsRoute = AdminPrestationsRouteImport.update({
   path: '/prestations',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminProduitsRoute = AdminProduitsRouteImport.update({
+  id: '/produits',
+  path: '/produits',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminReservationsRoute = AdminReservationsRouteImport.update({
   id: '/reservations',
   path: '/reservations',
@@ -161,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/admin/clients': typeof AdminClientsRoute
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
+  '/admin/produits': typeof AdminProduitsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/admin/clients': typeof AdminClientsRoute
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
+  '/admin/produits': typeof AdminProduitsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/admin/clients': typeof AdminClientsRoute
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
+  '/admin/produits': typeof AdminProduitsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -235,6 +244,7 @@ export interface FileRouteTypes {
     | '/admin/clients'
     | '/admin/parametres'
     | '/admin/prestations'
+    | '/admin/produits'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/admin/clients'
     | '/admin/parametres'
     | '/admin/prestations'
+    | '/admin/produits'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/admin/clients'
     | '/admin/parametres'
     | '/admin/prestations'
+    | '/admin/produits'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -436,6 +448,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPrestationsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/produits': {
+      id: '/admin/produits'
+      path: '/produits'
+      fullPath: '/admin/produits'
+      preLoaderRoute: typeof AdminProduitsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/reservations': {
       id: '/admin/reservations'
       path: '/reservations'
@@ -471,6 +490,7 @@ interface AdminRouteChildren {
   AdminClientsRoute: typeof AdminClientsRoute
   AdminParametresRoute: typeof AdminParametresRoute
   AdminPrestationsRoute: typeof AdminPrestationsRoute
+  AdminProduitsRoute: typeof AdminProduitsRoute
   AdminReservationsRoute: typeof AdminReservationsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -479,6 +499,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminClientsRoute: AdminClientsRoute,
   AdminParametresRoute: AdminParametresRoute,
   AdminPrestationsRoute: AdminPrestationsRoute,
+  AdminProduitsRoute: AdminProduitsRoute,
   AdminReservationsRoute: AdminReservationsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
