@@ -1,18 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Clock, Search, X } from "lucide-react";
-import { serviceCategories, type ServiceCategory } from "@/data/services";
 import { useCatalogue } from "@/lib/catalogue";
+import { categoriesInUse, parseCategoryParam } from "@/lib/service-categories";
 import { formatFCFA } from "@/lib/format";
 import { LogoMark, Screen, Img } from "@/components/app";
 
-// Ordre d'affichage des filtres ; une catégorie sans prestation n'est pas proposée.
-const filterOrder: ServiceCategory[] = ["visage", "massage", "corps", "onglerie", "coiffure", "spa"];
-
 export const Route = createFileRoute("/prestations/")({
-  validateSearch: (s: Record<string, unknown>): { categorie?: ServiceCategory } => {
-    const c = s["categorie"] as ServiceCategory;
-    return serviceCategories.some((x) => x.id === c) ? { categorie: c } : {};
+  // Le format seul est vérifié ici : les catégories viennent du catalogue (base de données), l'existence est vérifiée dans la page.
+  validateSearch: (s: Record<string, unknown>): { categorie?: string } => {
+    const c = parseCategoryParam(s["categorie"]);
+    return c ? { categorie: c } : {};
   },
   head: () => ({ meta: [{ title: "Nos prestations | Dalanda Beauty Spa" }, { name: "description", content: "Soins du visage, du corps, coiffure, massages et onglerie." }] }),
   component: Prestations,
@@ -21,17 +19,17 @@ export const Route = createFileRoute("/prestations/")({
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 function Prestations() {
-  const { categorie } = Route.useSearch();
-  const { services } = useCatalogue();
+  const { categorie: asked } = Route.useSearch();
+  const { services, categories } = useCatalogue();
   const navigate = useNavigate({ from: "/prestations/" });
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (searching) input.current?.focus(); }, [searching]);
 
-  const cats = filterOrder
-    .map((id) => serviceCategories.find((c) => c.id === id))
-    .filter((c): c is (typeof serviceCategories)[number] => !!c && services.some((s) => s.category === c.id));
+  // Une catégorie n'est proposée que si elle compte au moins une prestation ; une catégorie inconnue dans l'adresse revient à « Tous ».
+  const cats = categoriesInUse(categories, services);
+  const categorie = asked && cats.some((c) => c.id === asked) ? asked : undefined;
   const q = norm(query.trim());
   const list = services.filter((s) => (!categorie || s.category === categorie) && (!q || norm(`${s.name} ${s.description}`).includes(q)));
   const chip = (on: boolean) => `shrink-0 rounded-full border px-4 py-2 text-xs font-medium transition ${on ? "border-gold bg-gold text-deep shadow-sm" : "border-border bg-card text-muted-foreground"}`;

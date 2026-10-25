@@ -1,4 +1,5 @@
-import { services as localServices, type Service, type ServiceCategory } from "@/data/services";
+import { serviceCategories, services as localServices, type Service, type ServiceCategory, type ServiceCategoryInfo } from "@/data/services";
+import { buildCategories, CATEGORY_COLUMNS } from "@/lib/service-categories";
 import { settings } from "@/data/settings";
 import {
   abidjanToday, bookedSlots, cancelBooking as cancelLocal, createBooking as createLocal, getBookings,
@@ -14,12 +15,12 @@ import { supabase } from "@/lib/supabase";
 
 export type ApiFailure = { ok: false; code: string; error: string };
 export type Rules = { minNoticeHours: number; cancelNoticeHours: number; maxDaysAhead: number; maxActivePerPhone: number };
-export type Catalogue = { services: Service[]; timeSlots: string[]; rules: Rules; source: "supabase" | "local" };
+export type Catalogue = { services: Service[]; categories: ServiceCategoryInfo[]; timeSlots: string[]; rules: Rules; source: "supabase" | "local" };
 export type SlotAvailability = { slot: string; available: boolean };
 export type BookingInput = { service: Service; date: string; slot: string; name: string; phone: string; comment: string };
 
 export const defaultRules: Rules = { minNoticeHours: 2, cancelNoticeHours: 2, maxDaysAhead: 180, maxActivePerPhone: 3 };
-export const localCatalogue: Catalogue = { services: localServices, timeSlots: settings.timeSlots, rules: defaultRules, source: "local" };
+export const localCatalogue: Catalogue = { services: localServices, categories: serviceCategories, timeSlots: settings.timeSlots, rules: defaultRules, source: "local" };
 
 /** Sous-ensemble du client Supabase utilisé ici (permet de brancher un faux client dans les tests). */
 export type DataClient = {
@@ -36,7 +37,7 @@ const SERVER: ApiFailure = { ok: false, code: "server_error", error: "Service mo
 const hhmm = (v: unknown) => String(v).slice(0, 5);
 const hours = (h: number) => h * 3600_000;
 
-type ServiceRow = { id: string; name: string; category: ServiceCategory; description: string; duration_label: string; price_fcfa: number; image_url: string | null };
+type ServiceRow = { id: string; name: string; category: ServiceCategory; description: string; duration_label: string; price_fcfa: number; image_url: string | null; active?: boolean };
 
 export function createApi(client: DataClient | null) {
   const remote = client !== null;
@@ -61,16 +62,22 @@ export function createApi(client: DataClient | null) {
     /** Catalogue, grille de créneaux et règles du salon. Lève une erreur si le serveur est injoignable (react-query réessaie). */
     async fetchCatalogue(): Promise<Catalogue> {
       if (!client) return localCatalogue;
-      const [s, t, r] = await Promise.all([
-        client.from("services").select("id,name,category,description,duration_label,price_fcfa,image_url,sort_order").order("sort_order"),
+      const [s, t, r, c] = await Promise.all([
+        client.from("services").select("id,name,category,description,duration_label,price_fcfa,image_url,sort_order,active").order("sort_order"),
         client.from("time_slots").select("slot").order("slot"),
         client.from("salon_settings").select("min_notice_hours,cancel_notice_hours,max_days_ahead,max_active_bookings_per_phone"),
+        // Catégories : une erreur (table pas encore créée, réseau) ne bloque JAMAIS le catalogue ; les catégories du code servent alors de repli.
+        Promise.resolve(client.from("service_categories").select(CATEGORY_COLUMNS).order("sort_order")).catch(() => ({ data: null, error: true })),
       ]);
       if (s.error || t.error || r.error) throw new Error("catalogue indisponible");
       const row = ((r.data as Record<string, number>[]) ?? [])[0];
+      // Le site public ne montre QUE les prestations actives, quel que soit le compte connecté : un administrateur lit aussi les inactives
+      // (politique « admin services »), qui ne doivent ni apparaître dans les listes ni faire apparaître une catégorie.
+      const rows = ((s.data as ServiceRow[]) ?? []).filter((x) => x.active !== false);
       return {
         source: "supabase",
-        services: ((s.data as ServiceRow[]) ?? []).map((x) => ({
+        categories: buildCategories((c as { error?: unknown; data?: unknown }).error ? null : (c as { data?: unknown }).data, rows.map((x) => x.category)),
+        services: rows.map((x) => ({
           id: x.id, name: x.name, category: x.category, description: x.description,
           duration: x.duration_label, price: x.price_fcfa,
           // Photo téléversée par l'administrateur en priorité ; sinon la photo locale de même identifiant (image par défaut).

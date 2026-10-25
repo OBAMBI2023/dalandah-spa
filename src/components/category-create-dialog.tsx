@@ -4,12 +4,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { createAdminCategory, normalizeCategoryName, validateCategoryName } from "@/lib/admin-categories";
 
 /**
- * Petite fenêtre « Créer une catégorie », ouverte depuis le formulaire produit. Elle est indépendante du formulaire : fermer ou échouer
- * ne touche jamais au brouillon du produit. Rien n'est considéré comme créé tant que la base n'a pas confirmé.
+ * Petite fenêtre « Créer une catégorie », ouverte depuis le formulaire produit ou le formulaire prestation. Elle est indépendante du
+ * formulaire : fermer ou échouer ne touche jamais au brouillon. Rien n'est considéré comme créé tant que la base n'a pas confirmé.
  * `existing` : catégories déjà proposées (pour refuser un doublon avant même d'appeler la base).
+ * Par défaut : catégories de PRODUITS. Pour d'autres catégories : `create` (rend la valeur transmise à `onCreated`), `queryKey` (liste à
+ * relire avant de rendre la main) et `description`.
  */
-export function CategoryCreateDialog({ open, onOpenChange, existing, onCreated }: {
-  open: boolean; onOpenChange: (open: boolean) => void; existing: readonly string[]; onCreated: (name: string) => void;
+export function CategoryCreateDialog({ open, onOpenChange, existing, onCreated, create: createCategory = createAdminCategory, queryKey = ["admin", "categories"], description = "Elle sera disponible pour tous vos produits." }: {
+  open: boolean; onOpenChange: (open: boolean) => void; existing: readonly string[]; onCreated: (created: string) => void;
+  create?: (name: string) => Promise<string>; queryKey?: readonly unknown[]; description?: string;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -18,9 +21,9 @@ export function CategoryCreateDialog({ open, onOpenChange, existing, onCreated }
   const sending = useRef(false);
 
   const create = useMutation({
-    mutationFn: (n: string) => createAdminCategory(n),
+    mutationFn: (n: string) => createCategory(n),
     onSuccess: async (saved) => {
-      await qc.invalidateQueries({ queryKey: ["admin", "categories"] });
+      await qc.invalidateQueries({ queryKey: [...queryKey] });
       setName("");
       setError("");
       onCreated(saved);
@@ -50,7 +53,7 @@ export function CategoryCreateDialog({ open, onOpenChange, existing, onCreated }
       <DialogContent className="ap-dialog max-w-sm">
         <DialogHeader className="ap-dialog-head space-y-0 text-left">
           <DialogTitle className="ap-dialog-title">Créer une catégorie</DialogTitle>
-          <DialogDescription className="ap-dialog-desc">Elle sera disponible pour tous vos produits.</DialogDescription>
+          <DialogDescription className="ap-dialog-desc">{description}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} noValidate>
           <div className="ap-dialog-body !pb-4 !pt-4">

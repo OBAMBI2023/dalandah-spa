@@ -3,9 +3,19 @@ import massage from "@/assets/massage.jpg.asset.json";
 import pedicure from "@/assets/pedicure.jpg.asset.json";
 import coiffure from "@/assets/coiffure.jpg.asset.json";
 
-export type ServiceCategory = "visage" | "corps" | "massage" | "coiffure" | "onglerie" | "spa";
+/** Identifiant d'une catégorie (table public.service_categories) : « visage », « massage »… ou celui d'une catégorie créée depuis l'administration. */
+export type ServiceCategory = string;
 
-export const serviceCategories: { id: ServiceCategory; label: string; title: string; description: string; image: string }[] = [
+export type ServiceCategoryInfo = { id: ServiceCategory; label: string; title: string; description: string; image: string };
+
+/** Image des catégories qui n'en ont pas (catégories créées depuis l'administration, sans photo). */
+export const defaultCategoryImage = massage.url;
+
+/**
+ * Les 6 catégories d'origine, avec leurs libellés, descriptions, images et leur ordre d'affichage. Elles servent aussi de repli tant que la
+ * base ne fournit pas la liste (hors ligne, migration 20261028 pas encore appliquée) ; les catégories créées ensuite viennent de la base.
+ */
+export const serviceCategories: ServiceCategoryInfo[] = [
   { id: "visage", label: "Visage", title: "Soins du visage", description: "Nettoyage, vapeur et soins doux pour une peau apaisée.", image: facial.url },
   { id: "massage", label: "Massage", title: "Massages relaxants", description: "Un vrai moment de détente pour relâcher les tensions.", image: massage.url },
   { id: "corps", label: "Corps", title: "Soins du corps", description: "Gommage, enveloppement et soins pour le corps.", image: massage.url },

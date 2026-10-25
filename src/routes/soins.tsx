@@ -1,15 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { serviceCategories, type ServiceCategory } from "@/data/services";
 import { useCatalogue } from "@/lib/catalogue";
+import { categoriesInUse, parseCategoryParam } from "@/lib/service-categories";
 import { ServiceCard } from "@/components/cards";
 import { PageTitle } from "@/components/layout";
 
-type Search = { categorie?: ServiceCategory };
+type Search = { categorie?: string };
 
 export const Route = createFileRoute("/soins")({
   validateSearch: (s: Record<string, unknown>): Search => {
-    const c = s.categorie as ServiceCategory;
-    return serviceCategories.some((x) => x.id === c) ? { categorie: c } : {};
+    const c = parseCategoryParam(s["categorie"]);
+    return c ? { categorie: c } : {};
   },
   head: () => ({
     meta: [
@@ -23,8 +23,11 @@ export const Route = createFileRoute("/soins")({
 });
 
 function Soins() {
-  const { categorie } = Route.useSearch();
-  const { services } = useCatalogue();
+  const { categorie: asked } = Route.useSearch();
+  const { services, categories } = useCatalogue();
+  // Catégories qui comptent au moins une prestation ; une catégorie inconnue dans l'adresse revient à « Tous les soins ».
+  const cats = categoriesInUse(categories, services);
+  const categorie = asked && cats.some((c) => c.id === asked) ? asked : undefined;
   const list = categorie ? services.filter((s) => s.category === categorie) : services;
   const chip = "rounded-full border px-4 py-2 text-sm transition";
   return (
@@ -33,7 +36,7 @@ function Soins() {
       <section className="mx-auto max-w-7xl px-5 py-12">
         <div className="flex flex-wrap gap-2">
           <Link to="/soins" search={{}} className={`${chip} ${!categorie ? "border-primary bg-primary text-primary-foreground" : "hover:bg-secondary"}`}>Tous les soins</Link>
-          {serviceCategories.map((c) => (
+          {cats.map((c) => (
             <Link key={c.id} to="/soins" search={{ categorie: c.id }}
               className={`${chip} ${categorie === c.id ? "border-primary bg-primary text-primary-foreground" : "hover:bg-secondary"}`}>{c.label}</Link>
           ))}

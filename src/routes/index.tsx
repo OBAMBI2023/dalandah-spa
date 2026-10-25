@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Leaf, Heart, Sparkles, Flower2, Clock } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import gamme from "@/assets/gamme.jpg.asset.json";
-import { serviceCategories } from "@/data/services";
+import { useCatalogue } from "@/lib/catalogue";
+import { categoriesInUse } from "@/lib/service-categories";
 import { useShopProducts } from "@/lib/shop-products";
 import { ProductCard } from "@/components/cards";
 import { MobileHome } from "@/components/mobile-home";
@@ -30,6 +31,9 @@ const values = [
 
 function Index() {
   const { products } = useShopProducts();
+  // Catégories d'origine et catégories créées depuis l'administration, à condition de compter au moins une prestation active.
+  const { services, categories } = useCatalogue();
+  const shownCategories = categoriesInUse(categories, services);
   return (
     <>
       <MobileHome />
@@ -55,7 +59,7 @@ function Index() {
         <p className="eyebrow">Nos prestations</p>
         <h2 className="mt-2 text-4xl text-deep md:text-5xl">Prenez du temps pour vous</h2>
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-          {serviceCategories.map((c) => (
+          {shownCategories.map((c) => (
             <article key={c.id} className="group overflow-hidden rounded-2xl border bg-card">
               <div className="aspect-[4/5] overflow-hidden"><Img src={c.image} alt={c.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" /></div>
               <div className="p-5">

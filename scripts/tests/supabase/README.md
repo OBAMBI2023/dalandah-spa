@@ -14,6 +14,8 @@ Le moteur est un vrai PostgreSQL ; les rôles `anon`, `authenticated` et `servic
 | `bun run test:sql:products-audit` | audit de l'étape 1 : droits effectifs, contournements du stock et du journal, validations, objets existants inchangés, import des produits de démonstration |
 | `bun run test:sql:categories` | catégories de produits : table, normalisation Unicode (NFC, espaces insécables, invisibles, sens d'écriture), unicité insensible à la casse et aux accents combinants, rafales d'équivalents, RLS, droits (anon, non-admin, admin, service_role), amorçage répétable, aucun produit ni stock modifié |
 | `bun run test:sql:categories-mutations` | essais de fautes sur la migration des catégories : 20 protections supprimées une à une dans une copie temporaire, chacune doit faire échouer `test:sql:categories` |
+| `bun run test:sql:service-categories` | catégories de prestations dynamiques (migration 20261028) : conversion enum -> texte sans perte (10 prestations, réservations, prix, durées inchangés), amorçage des 6 catégories, clé étrangère, unicité (casse, accents, espaces), identifiants (collisions, noms non latins), RLS (lecture publique, aucune écriture directe), `admin_create_service_category` (admin vérifié avant la normalisation), réservation sur une catégorie créée |
+| `bun run test:sql:service-categories-mutations` | essais de fautes sur cette migration : 24 protections supprimées une à une dans une copie temporaire, chacune doit faire échouer `test:sql:service-categories` |
 | `bun run test:sql:mutations` | ajoute à une copie temporaire des migrations fautives et vérifie que le guard les détecte |
 | `bun run test:sql:all` | les neuf, à la suite (code de sortie 0 si tout passe) |
 

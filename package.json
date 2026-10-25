@@ -21,8 +21,10 @@
     "test:sql:products-audit": "node scripts/tests/supabase/products-audit.mjs",
     "test:sql:categories": "node scripts/tests/supabase/categories.mjs",
     "test:sql:categories-mutations": "node scripts/tests/supabase/categories-mutations.mjs",
+    "test:sql:service-categories": "node scripts/tests/supabase/service-categories.mjs",
+    "test:sql:service-categories-mutations": "node scripts/tests/supabase/service-categories-mutations.mjs",
     "test:sql:mutations": "node scripts/tests/supabase/mutations.mjs",
-    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/products.mjs && node scripts/tests/supabase/products-audit.mjs && node scripts/tests/supabase/categories.mjs && node scripts/tests/supabase/mutations.mjs && node scripts/tests/supabase/categories-mutations.mjs"
+    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/products.mjs && node scripts/tests/supabase/products-audit.mjs && node scripts/tests/supabase/categories.mjs && node scripts/tests/supabase/service-categories.mjs && node scripts/tests/supabase/mutations.mjs && node scripts/tests/supabase/categories-mutations.mjs && node scripts/tests/supabase/service-categories-mutations.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

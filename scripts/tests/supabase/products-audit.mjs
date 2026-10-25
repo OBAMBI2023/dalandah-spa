@@ -274,7 +274,9 @@ await base.exec(ENV_SQL);
 await base.exec(readMig(files[0]));
 await base.exec(SEED);
 const before = await snap(base);
-for (const f of files.slice(1)) await base.exec(readMig(f));
+// Migrations des produits et des catégories de produits seulement : 20261028 (catégories de prestations) transforme VOLONTAIREMENT services.category
+// (enum -> texte relié) ; sa non-régression est vérifiée par service-categories.mjs.
+for (const f of files.slice(1).filter((x) => x < "20261028")) await base.exec(readMig(f));
 const after = await snap(base);
 ok("colonnes, politiques, droits, fonctions, énumérations, déclencheurs et données existants strictement identiques après les migrations suivantes", before === after, "différence détectée");
 await base.close();

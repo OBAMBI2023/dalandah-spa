@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { Bell, Calendar, Smile, User, Scissors, Flower2, Hand, Tag, ArrowRight, MapPin } from "lucide-react";
+import { Bell, Calendar, Smile, User, Scissors, Flower2, Hand, Tag, ArrowRight, MapPin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import hero from "@/assets/hero.jpg";
 import { useCatalogue } from "@/lib/catalogue";
+import { serviceCategories } from "@/data/services";
+import { categoriesInUse } from "@/lib/service-categories";
 import { offers, discounted } from "@/data/offers";
 import { settings } from "@/data/settings";
 import { formatFCFA } from "@/lib/format";
@@ -17,7 +19,9 @@ const shortcuts = [
 ];
 
 export function MobileHome() {
-  const { services } = useCatalogue();
+  const { services, categories } = useCatalogue();
+  // Raccourcis d'origine inchangés ; les catégories créées depuis l'administration s'y ajoutent dès qu'elles ont une prestation active.
+  const added = categoriesInUse(categories, services).filter((c) => !serviceCategories.some((o) => o.id === c.id));
   const picked = services.filter((s) => ["soin-visage-eclat", "massage-relaxant"].includes(s.id));
   const featured = picked.length === 2 ? picked : services.slice(0, 2);
   return (
@@ -47,6 +51,11 @@ export function MobileHome() {
             {shortcuts.map(({ label, Icon, search }) => (
               <Link key={label} to="/prestations" search={search} className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-2 py-4 text-center text-xs shadow-soft">
                 <Icon className="h-8 w-8 text-gold-deep" strokeWidth={1.3} />{label}
+              </Link>
+            ))}
+            {added.map((c) => (
+              <Link key={c.id} to="/prestations" search={{ categorie: c.id }} className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-2 py-4 text-center text-xs shadow-soft">
+                <Sparkles className="h-8 w-8 text-gold-deep" strokeWidth={1.3} /><span className="line-clamp-2">{c.label}</span>
               </Link>
             ))}
             <Link to="/offres" className="flex flex-col items-center gap-2 rounded-2xl border bg-card px-2 py-4 text-center text-xs shadow-soft">

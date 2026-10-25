@@ -42,7 +42,7 @@ ok("anon n'exécute que l'API publique prévue", set(anonFns) === set(PUBLIC_API
 const authFns = await callable("authenticated");
 // normalize_phone (pure, sans donnée) est évaluée par une colonne générée avec les droits de l'appelant : tolérée si présente.
 // Fonctions d'administration (rôle admin vérifié dans la fonction, droits fermés à anon) : produits, étape 1.
-const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_list_products", "public.admin_set_product_image", "public.admin_update_product"];
+const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_create_service_category", "public.admin_list_products", "public.admin_set_product_image", "public.admin_update_product"];
 const AUTH_ALLOWED = [...PUBLIC_API, ...ADMIN_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
 ok("authenticated n'exécute que l'API publique et les helpers autorisés",
   authFns.every((f) => AUTH_ALLOWED.includes(f)) && [...PUBLIC_API, ...ADMIN_API].every((f) => authFns.includes(f)), set(authFns));
@@ -68,8 +68,8 @@ ok("RLS activée sur toutes les tables", tables.every((t) => t.rls), set(tables.
 const tp = async (role) => (await q(
   `select table_schema || '.' || table_name as t, privilege_type as p from information_schema.table_privileges where grantee = $1 and table_schema in ('public','private')`, [role]));
 const anonT = Object.fromEntries((await tp("anon")).map((r) => [r.t + ":" + r.p, 1]));
-ok("anon : lecture seule de services, time_slots, salon_settings (niveau table), rien d'autre",
-  set(Object.keys(anonT)) === set(["public.services:SELECT", "public.time_slots:SELECT", "public.salon_settings:SELECT"]), set(Object.keys(anonT)));
+ok("anon : lecture seule de services, service_categories, time_slots, salon_settings (niveau table), rien d'autre",
+  set(Object.keys(anonT)) === set(["public.service_categories:SELECT", "public.services:SELECT", "public.time_slots:SELECT", "public.salon_settings:SELECT"]), set(Object.keys(anonT)));
 // products : droits PAR COLONNE pour anon (information_schema.table_privileges ne les montre pas).
 const PUBLIC_PRODUCT_COLUMNS = ["id", "name", "category", "short_description", "description", "features", "usage_tips", "volume", "image_url", "sale_price", "stock_qty"];
 const anonCols = await q(`select table_name, column_name, privilege_type from information_schema.column_privileges where grantee = 'anon' and table_schema = 'public' and table_name in ('products','product_costs','stock_movements','bookings','profiles','user_roles') order by 1, 2, 3`);
@@ -86,7 +86,7 @@ ok("authenticated ne peut ni insérer ni supprimer dans bookings", !authT.some((
 ok("authenticated n'écrit pas dans user_roles", !authT.some((r) => r.t === "public.user_roles" && r.p !== "SELECT"));
 ok("authenticated n'a aucun droit sur le schéma private (tables)", !authT.some((r) => r.t.startsWith("private.")));
 
-const ADMIN_READ_ONLY = ["public.products", "public.product_costs", "public.stock_movements", "public.product_categories"];
+const ADMIN_READ_ONLY = ["public.products", "public.product_costs", "public.stock_movements", "public.product_categories", "public.service_categories"];
 ok("authenticated ne peut écrire directement ni dans products, ni dans product_costs, ni dans stock_movements",
   !authT.some((r) => ADMIN_READ_ONLY.includes(r.t) && r.p !== "SELECT"), set(authT.filter((r) => ADMIN_READ_ONLY.includes(r.t) && r.p !== "SELECT").map((r) => r.t + ":" + r.p)));
 ok("anon ne lit ni product_costs, ni stock_movements, ni product_categories", !anonT["public.product_costs:SELECT"] && !anonT["public.stock_movements:SELECT"] && !anonT["public.product_categories:SELECT"]);
@@ -97,7 +97,7 @@ ok("seules 3 colonnes de bookings sont modifiables (status, cancelled_at, cancel
 const pol = await q(`select tablename, cmd, roles::text as roles from pg_policies where schemaname = 'public'`);
 ok("aucune politique pour anon sur bookings, profiles, user_roles, product_costs, stock_movements, product_categories",
   !pol.some((p) => ["bookings", "profiles", "user_roles", "product_costs", "stock_movements", "product_categories"].includes(p.tablename) && /anon/.test(p.roles)));
-ok("aucune politique d'écriture sur products, product_costs, stock_movements, product_categories", !pol.some((p) => ["products", "product_costs", "stock_movements", "product_categories"].includes(p.tablename) && p.cmd !== "SELECT"));
+ok("aucune politique d'écriture sur products, product_costs, stock_movements, product_categories, service_categories", !pol.some((p) => ["products", "product_costs", "stock_movements", "product_categories", "service_categories"].includes(p.tablename) && p.cmd !== "SELECT"));
 ok("aucune politique d'écriture sur user_roles", !pol.some((p) => p.tablename === "user_roles" && p.cmd !== "SELECT"));
 
 console.log(`\n${pass} réussis, ${fail} échoués`);
