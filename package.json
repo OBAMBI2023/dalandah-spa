@@ -17,8 +17,10 @@
     "test:sql:probe": "node scripts/tests/supabase/probe.mjs",
     "test:sql:guard": "node scripts/tests/supabase/guard.mjs",
     "test:sql:limits": "node scripts/tests/supabase/limits.mjs",
+    "test:sql:products": "node scripts/tests/supabase/products.mjs",
+    "test:sql:products-audit": "node scripts/tests/supabase/products-audit.mjs",
     "test:sql:mutations": "node scripts/tests/supabase/mutations.mjs",
-    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/mutations.mjs"
+    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/products.mjs && node scripts/tests/supabase/products-audit.mjs && node scripts/tests/supabase/mutations.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

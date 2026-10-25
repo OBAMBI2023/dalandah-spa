@@ -41,9 +41,11 @@ const anonFns = await callable("anon");
 ok("anon n'exécute que l'API publique prévue", set(anonFns) === set(PUBLIC_API), set(anonFns));
 const authFns = await callable("authenticated");
 // normalize_phone (pure, sans donnée) est évaluée par une colonne générée avec les droits de l'appelant : tolérée si présente.
-const AUTH_ALLOWED = [...PUBLIC_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
+// Fonctions d'administration (rôle admin vérifié dans la fonction, droits fermés à anon) : produits, étape 1.
+const ADMIN_API = ["public.admin_create_product", "public.admin_list_products", "public.admin_set_product_image", "public.admin_update_product"];
+const AUTH_ALLOWED = [...PUBLIC_API, ...ADMIN_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
 ok("authenticated n'exécute que l'API publique et les helpers autorisés",
-  authFns.every((f) => AUTH_ALLOWED.includes(f)) && PUBLIC_API.every((f) => authFns.includes(f)), set(authFns));
+  authFns.every((f) => AUTH_ALLOWED.includes(f)) && [...PUBLIC_API, ...ADMIN_API].every((f) => authFns.includes(f)), set(authFns));
 
 const defs = await q(`select n.nspname || '.' || p.proname as fn, p.prosecdef as definer,
     exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c = 'search_path=""') as safe_path
@@ -52,12 +54,12 @@ const noPath = defs.filter((d) => d.definer && !d.safe_path).map((d) => d.fn);
 ok("toute fonction SECURITY DEFINER fixe search_path = ''", noPath.length === 0, set(noPath));
 const definerSet = defs.filter((d) => d.definer).map((d) => d.fn);
 ok("liste des fonctions SECURITY DEFINER connue",
-  set(definerSet) === set([...PUBLIC_API, "private.has_role", "private.is_admin", "private.rate_limit_hit"]), set(definerSet));
+  set(definerSet) === set([...PUBLIC_API, ...ADMIN_API, "private.has_role", "private.is_admin", "private.rate_limit_hit"]), set(definerSet));
 ok("aucune fonction du schéma public n'est exécutable par PUBLIC sans être dans la liste blanche",
   (await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname = 'public' and p.prokind = 'f' and p.proname <> all($1)
               and (p.proacl is null or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))`,
-    [PUBLIC_API.map((f) => f.replace("public.", ""))])).length === 0);
+    [[...PUBLIC_API, ...ADMIN_API].map((f) => f.replace("public.", ""))])).length === 0);
 
 const tables = await q(`select n.nspname || '.' || c.relname as t, c.relrowsecurity as rls from pg_class c
   join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind = 'r'`);
@@ -66,20 +68,36 @@ ok("RLS activée sur toutes les tables", tables.every((t) => t.rls), set(tables.
 const tp = async (role) => (await q(
   `select table_schema || '.' || table_name as t, privilege_type as p from information_schema.table_privileges where grantee = $1 and table_schema in ('public','private')`, [role]));
 const anonT = Object.fromEntries((await tp("anon")).map((r) => [r.t + ":" + r.p, 1]));
-ok("anon : lecture seule de services, time_slots, salon_settings, rien d'autre",
+ok("anon : lecture seule de services, time_slots, salon_settings (niveau table), rien d'autre",
   set(Object.keys(anonT)) === set(["public.services:SELECT", "public.time_slots:SELECT", "public.salon_settings:SELECT"]), set(Object.keys(anonT)));
+// products : droits PAR COLONNE pour anon (information_schema.table_privileges ne les montre pas).
+const PUBLIC_PRODUCT_COLUMNS = ["id", "name", "category", "short_description", "description", "features", "usage_tips", "volume", "image_url", "sale_price", "stock_qty"];
+const anonCols = await q(`select table_name, column_name, privilege_type from information_schema.column_privileges where grantee = 'anon' and table_schema = 'public' and table_name in ('products','product_costs','stock_movements','bookings','profiles','user_roles') order by 1, 2, 3`);
+const expectedCols = set(PUBLIC_PRODUCT_COLUMNS.map((c) => "products." + c + ":SELECT"));
+const authCols = await q(`select table_name, column_name, privilege_type from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'products' order by 1, 2, 3`);
+ok("authenticated : products limité aux MÊMES colonnes publiques (les droits par colonne suivent le rôle, pas la personne ; l'administrateur passe par admin_list_products)",
+  set(authCols.map((r) => r.table_name + "." + r.column_name + ":" + r.privilege_type)) === expectedCols, set(authCols.map((r) => r.table_name + "." + r.column_name + ":" + r.privilege_type)));
+ok("anon : products en lecture seule limitée aux colonnes de la boutique publique (ni sku, ni seuil, ni is_demo, ni dates)",
+  set(anonCols.map((r) => r.table_name + "." + r.column_name + ":" + r.privilege_type)) === set(PUBLIC_PRODUCT_COLUMNS.map((c) => "products." + c + ":SELECT")),
+  set(anonCols.map((r) => r.table_name + "." + r.column_name + ":" + r.privilege_type)));
 const authT = await tp("authenticated");
 ok("aucun TRUNCATE, REFERENCES ni TRIGGER pour authenticated", !authT.some((r) => ["TRUNCATE", "REFERENCES", "TRIGGER"].includes(r.p)));
 ok("authenticated ne peut ni insérer ni supprimer dans bookings", !authT.some((r) => r.t === "public.bookings" && ["INSERT", "DELETE", "UPDATE"].includes(r.p)));
 ok("authenticated n'écrit pas dans user_roles", !authT.some((r) => r.t === "public.user_roles" && r.p !== "SELECT"));
 ok("authenticated n'a aucun droit sur le schéma private (tables)", !authT.some((r) => r.t.startsWith("private.")));
 
+const ADMIN_READ_ONLY = ["public.products", "public.product_costs", "public.stock_movements"];
+ok("authenticated ne peut écrire directement ni dans products, ni dans product_costs, ni dans stock_movements",
+  !authT.some((r) => ADMIN_READ_ONLY.includes(r.t) && r.p !== "SELECT"), set(authT.filter((r) => ADMIN_READ_ONLY.includes(r.t) && r.p !== "SELECT").map((r) => r.t + ":" + r.p)));
+ok("anon ne lit ni product_costs ni stock_movements", !anonT["public.product_costs:SELECT"] && !anonT["public.stock_movements:SELECT"]);
+
 const cols = (await q(`select column_name from information_schema.column_privileges where grantee = 'authenticated' and table_schema = 'public' and table_name = 'bookings' and privilege_type = 'UPDATE'`)).map((r) => r.column_name);
 ok("seules 3 colonnes de bookings sont modifiables (status, cancelled_at, cancelled_by)", set(cols) === set(["status", "cancelled_at", "cancelled_by"]), set(cols));
 
 const pol = await q(`select tablename, cmd, roles::text as roles from pg_policies where schemaname = 'public'`);
-ok("aucune politique pour anon sur bookings, profiles, user_roles",
-  !pol.some((p) => ["bookings", "profiles", "user_roles"].includes(p.tablename) && /anon/.test(p.roles)));
+ok("aucune politique pour anon sur bookings, profiles, user_roles, product_costs, stock_movements",
+  !pol.some((p) => ["bookings", "profiles", "user_roles", "product_costs", "stock_movements"].includes(p.tablename) && /anon/.test(p.roles)));
+ok("aucune politique d'écriture sur products, product_costs, stock_movements", !pol.some((p) => ["products", "product_costs", "stock_movements"].includes(p.tablename) && p.cmd !== "SELECT"));
 ok("aucune politique d'écriture sur user_roles", !pol.some((p) => p.tablename === "user_roles" && p.cmd !== "SELECT"));
 
 console.log(`\n${pass} réussis, ${fail} échoués`);

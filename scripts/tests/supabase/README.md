@@ -10,8 +10,10 @@ Le moteur est un vrai PostgreSQL ; les rôles `anon`, `authenticated` et `servic
 | `bun run test:sql:probe` | sondages (chevauchements, annulations, cas limites) et inventaire des droits |
 | `bun run test:sql:guard` | garde des privilèges : liste blanche des fonctions exécutables, `SECURITY DEFINER`, RLS, droits sur les tables |
 | `bun run test:sql:limits` | normalisation des numéros (+225, 00225, 8 et 10 chiffres), limites anti-abus, droits de la colonne générée, nattes à 180 min |
+| `bun run test:sql:products` | boutique (étape 1) : produits, prix d'achat, journal du stock en ajout seul, fonctions d'administration et RLS |
+| `bun run test:sql:products-audit` | audit de l'étape 1 : droits effectifs, contournements du stock et du journal, validations, objets existants inchangés, import des produits de démonstration |
 | `bun run test:sql:mutations` | ajoute à une copie temporaire des migrations fautives et vérifie que le guard les détecte |
-| `bun run test:sql:all` | les cinq, à la suite (code de sortie 0 si tout passe) |
+| `bun run test:sql:all` | les sept, à la suite (code de sortie 0 si tout passe) |
 
 `bun run test` (Vitest) reste réservé aux tests de l'application (`src/**`) et n'exécute pas ces scripts.
 
