@@ -11,7 +11,7 @@ export const productCategories = [
 export type ProductCategory = (typeof productCategories)[number];
 
 export type Product = {
-  id: string; name: string; category: ProductCategory; price: number; images: string[];
+  id: string; name: string; category: string; price: number; images: string[];   // category : texte libre côté base
   shortDescription: string; description: string;
   features: string[];      // Caractéristiques validées uniquement
   usage?: string;          // Conseils d'utilisation, uniquement si fournis

@@ -1,7 +1,8 @@
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { products, productCategories } from "@/data/products";
+import { productCategories } from "@/data/products";
+import { useShopProducts } from "@/lib/shop-products";
 import { ProductCard } from "@/components/cards";
 import { PageTitle } from "@/components/layout";
 
@@ -23,6 +24,7 @@ function ShopLayout() {
 }
 
 function Shop() {
+  const { products, loaded, isError, refetch } = useShopProducts();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [sort, setSort] = useState("default");
@@ -34,7 +36,15 @@ function Shop() {
     if (sort === "desc") l = [...l].sort((a, b) => b.price - a.price);
     if (sort === "name") l = [...l].sort((a, b) => a.name.localeCompare(b.name, "fr"));
     return l;
-  }, [q, cat, sort, onlyAvail]);
+  }, [products, q, cat, sort, onlyAvail]);
+
+  // Catégories proposées : celles du catalogue, dans l'ordre habituel puis les autres (la base accepte un texte libre).
+  const categories = useMemo(() => {
+    const present = new Set(products.map((p) => p.category));
+    const known = productCategories.filter((c) => present.has(c));
+    const others = [...present].filter((c) => !(productCategories as readonly string[]).includes(c)).sort((a, b) => a.localeCompare(b, "fr"));
+    return [...known, ...others];
+  }, [products]);
 
   return (
     <>
@@ -47,7 +57,7 @@ function Shop() {
           </label>
           <select className="field" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Catégorie">
             <option value="">Toutes les catégories</option>
-            {productCategories.map((c) => <option key={c}>{c}</option>)}
+            {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
           <select className="field" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Trier">
             <option value="default">Trier</option>
@@ -57,10 +67,19 @@ function Shop() {
           </select>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} className="h-4 w-4 accent-primary" />Disponibles</label>
         </div>
-        {list.length ? (
+        {!loaded && !isError ? (
+          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="Chargement des produits">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-secondary" />)}
+          </div>
+        ) : isError ? (
+          <div role="alert" className="mt-16 text-center">
+            <p className="text-muted-foreground">Impossible de charger les produits pour le moment.</p>
+            <button onClick={refetch} className="btn btn-outline mt-4">Réessayer</button>
+          </div>
+        ) : list.length ? (
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{list.map((p) => <ProductCard key={p.id} p={p} />)}</div>
         ) : (
-          <p className="mt-16 text-center text-muted-foreground">Aucun produit ne correspond à votre recherche.</p>
+          <p className="mt-16 text-center text-muted-foreground">{products.length ? "Aucun produit ne correspond à votre recherche." : "Aucun produit n'est proposé pour le moment."}</p>
         )}
       </section>
     </>

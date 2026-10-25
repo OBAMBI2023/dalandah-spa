@@ -14,6 +14,7 @@ import { ProductFormDialog } from "@/components/product-form-dialog";
 import { ProductPhotoDialog } from "@/components/product-photo-dialog";
 import { getProduct, productCategories } from "@/data/products";
 import { formatFCFA } from "@/lib/format";
+import { SHOP_KEY } from "@/lib/shop";
 import { isAvailable, isLowStock, productStats, setProductActive, type AdminProduct } from "@/lib/admin-products";
 import { useAdminProducts, viewState } from "@/lib/admin-queries";
 
@@ -65,7 +66,7 @@ function Produits() {
   const toggle = useMutation({
     mutationFn: (p: AdminProduct) => setProductActive(p.id, !p.active),
     onSuccess: async (_d, p) => {
-      await qc.invalidateQueries({ queryKey: ["admin", "products"] });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["admin", "products"] }), qc.invalidateQueries({ queryKey: SHOP_KEY })]);
       setNotice({ kind: "ok", text: p.active ? `« ${p.name} » est désactivé : il n'apparaît plus dans la boutique.` : `« ${p.name} » est réactivé.` });
     },
     onError: (e) => setNotice({ kind: "error", text: e instanceof Error ? e.message : "Modification impossible." }),

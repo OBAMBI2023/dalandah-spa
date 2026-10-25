@@ -10,6 +10,7 @@ import {
   createAdminProduct, emptyProductForm, formToInput, ProductActionError, productFormSchema, productToForm, slugify, squeeze, updateAdminProduct,
   type AdminProduct, type ProductFormValues,
 } from "@/lib/admin-products";
+import { SHOP_KEY } from "@/lib/shop";
 
 const err = (m?: string) => (m ? <p role="alert" className="mt-1 text-xs text-destructive">{m}</p> : null);
 
@@ -42,7 +43,7 @@ export function ProductFormDialog({ product, categories, onClose, onSaved }: {
       await createAdminProduct({ ...input, id, initialQty: Number(v.initialQty.replace(/[\s\u00a0\u202f]/g, "")) });
     },
     onSuccess: async (_d, v) => {
-      await qc.invalidateQueries({ queryKey: ["admin", "products"] });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["admin", "products"] }), qc.invalidateQueries({ queryKey: SHOP_KEY })]);
       onSaved(editing ? `« ${v.name.trim()} » a été modifié.` : `« ${v.name.trim()} » a été ajouté au catalogue. Vous pouvez maintenant lui associer une photo.`);
     },
     onError: (e) => {

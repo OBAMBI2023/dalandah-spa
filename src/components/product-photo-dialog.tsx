@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Img } from "@/components/app";
 import { IMAGE_TYPES, removeProductImage, uploadProductImage, validateImageFile } from "@/lib/admin-images";
 import type { AdminProduct } from "@/lib/admin-products";
+import { SHOP_KEY } from "@/lib/shop";
 
 type Message = { kind: "ok" | "error"; text: string } | null;
 
@@ -28,7 +29,7 @@ export function ProductPhotoDialog({ product, fallbackImage }: { product: AdminP
   }, [file]);
 
   const reset = () => { setFile(null); setConfirming(false); setMessage(null); if (input.current) input.current.value = ""; };
-  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "products"] });
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["admin", "products"] }), qc.invalidateQueries({ queryKey: SHOP_KEY })]);
 
   const choose = (f: File | undefined) => {
     setMessage(null);

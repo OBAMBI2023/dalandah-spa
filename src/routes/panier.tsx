@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Minus, Plus, Trash2 } from "lucide-react";
-import { useCart, maxQty } from "@/lib/cart";
+import { useCart } from "@/lib/cart";
+import { useShopProducts } from "@/lib/shop-products";
 import { cartCount, cartSubtotal, formatFCFA } from "@/lib/format";
-import { getProduct } from "@/data/products";
 import { PageTitle } from "@/components/layout";
 import { Img } from "@/components/app";
 
@@ -20,22 +20,31 @@ export const Route = createFileRoute("/panier")({
 });
 
 function Cart() {
-  const { lines, setQty, remove, clear } = useCart();
+  const { lines, removed, dismissRemoved, setQty, remove, clear, maxQty } = useCart();
+  const { products } = useShopProducts();
+  const notice = removed.length > 0 && (
+    <div role="status" className="mx-auto mt-6 flex max-w-6xl items-start justify-between gap-3 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-deep">
+      <p>{removed.length === 1 ? "Un article n'est plus disponible et a été retiré de votre panier" : "Des articles ne sont plus disponibles et ont été retirés de votre panier"} : {removed.join(", ")}.</p>
+      <button onClick={dismissRemoved} className="shrink-0 underline">Fermer</button>
+    </div>
+  );
   if (!lines.length)
     return (
       <>
         <PageTitle eyebrow="Panier" title="Votre panier est vide" />
+        {notice}
         <div className="py-16 text-center"><Link to="/boutique" className="btn btn-primary">Continuer mes achats</Link></div>
       </>
     );
   return (
     <>
       <PageTitle eyebrow="Panier" title="Mon panier" text={`${cartCount(lines)} article(s). Stocks non synchronisés avec un système externe.`} />
+      {notice}
       <section className="mx-auto grid max-w-6xl gap-8 px-5 py-10 pb-28 lg:grid-cols-[1fr_340px]">
         <ul className="divide-y rounded-2xl border bg-card">
           {lines.map((l) => (
             <li key={l.id} className="flex gap-4 p-4">
-              <Img src={getProduct(l.id)?.images[0]} alt="" sizes="96px" className="h-20 w-20 rounded-lg object-cover" />
+              <Img src={products.find((p) => p.id === l.id)?.images[0]} alt="" sizes="96px" className="h-20 w-20 rounded-lg object-cover" />
               <div className="flex flex-1 flex-col gap-2">
                 <div className="flex justify-between gap-2">
                   <Link to="/boutique/$productId" params={{ productId: l.id }} className="font-display text-xl text-deep">{l.name}</Link>

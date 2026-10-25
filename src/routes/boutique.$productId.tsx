@@ -1,44 +1,49 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus, Check } from "lucide-react";
-import { getProduct } from "@/data/products";
 import { useCart } from "@/lib/cart";
 import { formatFCFA } from "@/lib/format";
+import { useShopProducts } from "@/lib/shop-products";
 import { Img } from "@/components/app";
 
+// Le produit vient du catalogue (Supabase) : pas de loader, comme la fiche d'une prestation. Le titre est posé une fois le produit connu.
 export const Route = createFileRoute("/boutique/$productId")({
-  loader: ({ params }) => {
-    const p = getProduct(params.productId);
-    if (!p) throw notFound();
-    return { id: p.id, name: p.name, seo: p.seo, short: p.shortDescription };
-  },
-  head: ({ loaderData }) => ({
-    meta: loaderData
-      ? [
-          { title: `${loaderData.name} | Dalanda Cosmétique` },
-          { name: "description", content: `${loaderData.short} ${loaderData.seo}` },
-          { property: "og:title", content: `${loaderData.name} | Dalanda Cosmétique` },
-          { property: "og:description", content: loaderData.short },
-        ]
-      : [{ title: "Produit indisponible | Dalanda Cosmétique" }, { name: "robots", content: "noindex" }],
-  }),
-  notFoundComponent: () => (
-    <div className="mx-auto max-w-xl px-5 py-24 text-center">
-      <h1 className="text-4xl text-deep">Produit introuvable</h1>
-      <Link to="/boutique" className="btn btn-primary mt-6">Retour à la boutique</Link>
-    </div>
-  ),
+  head: () => ({ meta: [{ title: "Produit | Dalanda Cosmétique" }] }),
   component: ProductPage,
 });
 
+function Notice({ title, text, retry }: { title: string; text?: string; retry?: () => void }) {
+  return (
+    <div className="mx-auto max-w-xl px-5 py-24 text-center" role={retry ? "alert" : "status"}>
+      <h1 className="text-4xl text-deep">{title}</h1>
+      {text && <p className="mt-3 text-muted-foreground">{text}</p>}
+      {retry && <button onClick={retry} className="btn btn-outline mt-6">Réessayer</button>}
+      <Link to="/boutique" className="btn btn-primary mt-6">Retour à la boutique</Link>
+    </div>
+  );
+}
+
 function ProductPage() {
-  const { id } = Route.useLoaderData();
-  const p = getProduct(id)!;
-  const { add } = useCart();
+  const { productId } = Route.useParams();
+  const { products, loaded, isError, refetch } = useShopProducts();
+  const { add, maxQty } = useCart();
   const [img, setImg] = useState(0);
   const [qty, setQty] = useState(1);
-  const max = p.stock ?? 99;
+  const p = products.find((x) => x.id === productId);
+
+  useEffect(() => {
+    if (p) document.title = `${p.name} | Dalanda Cosmétique`;
+  }, [p]);
+
+  // « Introuvable » seulement une fois la réponse du serveur reçue : un chargement ou une panne ne sont pas une absence.
+  if (!p) {
+    if (isError) return <Notice title="Chargement impossible" text="Impossible de charger ce produit pour le moment." retry={refetch} />;
+    if (!loaded) return <div aria-busy="true" aria-label="Chargement du produit" className="mx-auto max-w-7xl px-5 py-24"><div className="aspect-square max-w-lg animate-pulse rounded-2xl bg-secondary" /></div>;
+    return <Notice title="Produit introuvable" text="Ce produit n'existe pas ou n'est plus proposé." />;
+  }
+
+  const max = maxQty(p.id);
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-10 pb-28">

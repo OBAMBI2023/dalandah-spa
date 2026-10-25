@@ -3,7 +3,7 @@ import { Leaf, Heart, Sparkles, Flower2, Clock } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import gamme from "@/assets/gamme.jpg.asset.json";
 import { serviceCategories } from "@/data/services";
-import { products } from "@/data/products";
+import { useShopProducts } from "@/lib/shop-products";
 import { ProductCard } from "@/components/cards";
 import { MobileHome } from "@/components/mobile-home";
 import { Img } from "@/components/app";
@@ -29,6 +29,7 @@ const values = [
 ];
 
 function Index() {
+  const { products } = useShopProducts();
   return (
     <>
       <MobileHome />
