@@ -81,6 +81,34 @@ describe("page /promotions", () => {
     expect(card.getByText(PROMO_NOTICE)).toBeInTheDocument();
   });
 
+  it("pourcentage avec prix de référence annoncé : pastille, prix de référence identifié comme annoncé, AUCUN prix promotionnel calculé", async () => {
+    setRows([r({ id: "a", title: "Soins -15 %", kind: "percent", percent_off: 15, original_price_fcfa: 20000, service_id: "massage-relaxant" })]);
+    wrap(<Page />);
+    const card = within(await screen.findByTestId("promotion"));
+    expect(card.getByText("-15%")).toBeInTheDocument();
+    expect(card.getByText("Réduction annoncée : -15%")).toBeInTheDocument();
+    expect(card.getByText(/Prix de référence annoncé/)).toBeInTheDocument();
+    expect(card.getByText("20 000 FCFA").tagName).toBe("S");
+    expect(card.queryByText(/17\s?000/)).not.toBeInTheDocument(); // 20 000 - 15 % : jamais calculé
+    expect(card.getByText(PROMO_NOTICE)).toBeInTheDocument();
+  });
+
+  it("pourcentage sans prix de référence : pastille seule, aucun prix affiché", async () => {
+    setRows([r({ id: "a", title: "Soins -15 %", kind: "percent", percent_off: 15 })]);
+    wrap(<Page />);
+    const card = within(await screen.findByTestId("promotion"));
+    expect(card.getByText("-15%")).toBeInTheDocument();
+    expect(card.queryByText(/Prix de référence/)).not.toBeInTheDocument();
+    expect(card.queryByText(/FCFA/)).not.toBeInTheDocument();
+  });
+
+  it("type prix incohérent en base (promotionnel >= initial) : aucune réduction affichée", async () => {
+    setRows([r({ id: "a", title: "Incohérente", kind: "price", original_price_fcfa: 1000, promo_price_fcfa: 1000 })]);
+    wrap(<Page />);
+    const card = within(await screen.findByTestId("promotion"));
+    expect(card.queryByText(/%$/)).not.toBeInTheDocument();
+  });
+
   it("simple annonce : aucun prix, aucune pastille, aucune mention de prix ; sans date, sans lien, sans bouton", async () => {
     setRows([r({ id: "a", title: "Soirée spa", description: "Samedi soir" })]);
     wrap(<Page />);
@@ -112,17 +140,17 @@ describe("page /promotions", () => {
     setRows([r({ id: "a", title: "Massage duo", kind: "price", original_price_fcfa: 20000, promo_price_fcfa: 15000, service_id: "massage-relaxant" })]);
     wrap(<Page />);
     const card = within(await screen.findByTestId("promotion"));
-    expect(card.getByRole("link", { name: "Voir la prestation" })).toHaveAttribute("href", "/prestations/massage-relaxant");
-    expect(card.getByRole("link", { name: "Réserver" })).toHaveAttribute("href", "/reservation?service=massage-relaxant");
-    // Aucun paramètre de remise dans les liens
-    for (const a of card.getAllByRole("link")) expect(a.getAttribute("href")).not.toMatch(/prix|price|promo|remise|discount|percent/i);
+    expect(card.getByRole("link", { name: "Voir la prestation" })).toHaveAttribute("href", "/prestations/massage-relaxant?promo=a");
+    expect(card.getByRole("link", { name: "Réserver" })).toHaveAttribute("href", "/reservation?service=massage-relaxant&promo=a");
+    // L'identifiant de la promotion suit la navigation (suivi) ; aucun paramètre de prix ni de remise dans les liens
+    for (const a of card.getAllByRole("link")) expect(a.getAttribute("href")).not.toMatch(/prix|price|remise|discount|percent|amount/i);
   });
 
   it("bouton vers un produit", async () => {
     setRows([r({ id: "a", title: "Crème -20 %", kind: "percent", percent_off: 20, product_id: "creme-eclat" })]);
     wrap(<Page />);
     const card = within(await screen.findByTestId("promotion"));
-    expect(card.getByRole("link", { name: "Voir le produit" })).toHaveAttribute("href", "/boutique/creme-eclat");
+    expect(card.getByRole("link", { name: "Voir le produit" })).toHaveAttribute("href", "/boutique/creme-eclat?promo=a");
   });
 
   it("promotion la plus récente d'abord : l'ordre de la base est conservé", async () => {
@@ -183,7 +211,7 @@ describe("accueil mobile", () => {
     expect(section.queryByText("Cachée")).not.toBeInTheDocument();
     expect(section.queryByText("Plus tard")).not.toBeInTheDocument();
     expect(section.getByText(PROMO_NOTICE)).toBeInTheDocument();
-    expect(section.getByRole("link", { name: /Massage duo/ })).toHaveAttribute("href", "/prestations/massage-relaxant");
+    expect(section.getByRole("link", { name: /Massage duo/ })).toHaveAttribute("href", "/prestations/massage-relaxant?promo=1");
   });
 
   it("section masquée tant qu'il n'y a aucune promotion ou si la lecture échoue", async () => {

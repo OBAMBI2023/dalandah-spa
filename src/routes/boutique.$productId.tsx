@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { parsePromoParam } from "@/lib/promotion-tracking";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus, Check } from "lucide-react";
@@ -9,6 +10,8 @@ import { Img } from "@/components/app";
 
 // Le produit vient du catalogue (Supabase) : pas de loader, comme la fiche d'une prestation. Le titre est posé une fois le produit connu.
 export const Route = createFileRoute("/boutique/$productId")({
+  // ?promo= : promotion d'origine (acceptée pour que le lien fonctionne ; l'achat n'est pas suivi dans cette version).
+  validateSearch: (s: Record<string, unknown>): { promo?: string } => { const promo = parsePromoParam(s["promo"]); return promo ? { promo } : {}; },
   head: () => ({ meta: [{ title: "Produit | Dalanda Cosmétique" }] }),
   component: ProductPage,
 });

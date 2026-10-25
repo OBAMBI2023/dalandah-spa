@@ -36,13 +36,14 @@ const callable = async (role) => (await q(
     where n.nspname in ('public', 'private') and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
       and has_schema_privilege($1, n.nspname, 'usage') and has_function_privilege($1, p.oid, 'execute')`, [role])).map((r) => r.fn);
 
-const PUBLIC_API = ["public.cancel_booking", "public.create_booking", "public.get_availability", "public.get_booking"];
+// track_promotion_event / attribute_booking_to_promotion : suivi anonyme des promotions (migration 20261030), sans lecture ni donnée personnelle.
+const PUBLIC_API = ["public.attribute_booking_to_promotion", "public.cancel_booking", "public.create_booking", "public.get_availability", "public.get_booking", "public.track_promotion_event"];
 const anonFns = await callable("anon");
 ok("anon n'exécute que l'API publique prévue", set(anonFns) === set(PUBLIC_API), set(anonFns));
 const authFns = await callable("authenticated");
 // normalize_phone (pure, sans donnée) est évaluée par une colonne générée avec les droits de l'appelant : tolérée si présente.
 // Fonctions d'administration (rôle admin vérifié dans la fonction, droits fermés à anon) : produits, étape 1.
-const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_create_service_category", "public.admin_list_products", "public.admin_set_product_image", "public.admin_update_product"];
+const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_create_service_category", "public.admin_list_products", "public.admin_promotion_stats", "public.admin_set_product_image", "public.admin_update_product"];
 const AUTH_ALLOWED = [...PUBLIC_API, ...ADMIN_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
 ok("authenticated n'exécute que l'API publique et les helpers autorisés",
   authFns.every((f) => AUTH_ALLOWED.includes(f)) && [...PUBLIC_API, ...ADMIN_API].every((f) => authFns.includes(f)), set(authFns));
@@ -105,6 +106,13 @@ ok("authenticated n'a aucun droit DELETE sur promotions (suppression logique seu
 ok("anon n'a que SELECT sur promotions", set(Object.keys(anonT).filter((k) => k.startsWith("public.promotions:"))) === "public.promotions:SELECT");
 ok("promotions : aucune politique d'écriture pour anon, aucune politique DELETE ou ALL",
   !pol.some((p) => p.tablename === "promotions" && ((/anon/.test(p.roles) && p.cmd !== "SELECT") || p.cmd === "DELETE" || p.cmd === "ALL")));
+
+// Traçabilité des promotions : événements sans aucun accès direct, attributions lisibles par les administrateurs seulement (RLS), jamais d'écriture directe.
+ok("promotion_events : aucun droit pour anon ni authenticated", ![...Object.keys(anonT), ...authT.map((r) => r.t + ":" + r.p)].some((k) => k.startsWith("public.promotion_events")));
+ok("promotion_bookings : SELECT seulement pour authenticated, rien pour anon",
+  set(authT.filter((r) => r.t === "public.promotion_bookings").map((r) => r.p)) === "SELECT" && !Object.keys(anonT).some((k) => k.startsWith("public.promotion_bookings")));
+ok("promotion_events et promotion_bookings : aucune politique d'écriture, aucune politique pour anon",
+  !pol.some((p) => ["promotion_events", "promotion_bookings"].includes(p.tablename) && (p.cmd !== "SELECT" || /anon/.test(p.roles))));
 
 console.log(`\n${pass} réussis, ${fail} échoués`);
 process.exit(fail ? 1 : 0);

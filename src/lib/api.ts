@@ -1,4 +1,5 @@
 import { serviceCategories, services as localServices, type Service, type ServiceCategory, type ServiceCategoryInfo } from "@/data/services";
+import { sessionKey } from "@/lib/promotion-tracking";
 import { buildCategories, CATEGORY_COLUMNS } from "@/lib/service-categories";
 import { settings } from "@/data/settings";
 import {
@@ -17,7 +18,18 @@ export type ApiFailure = { ok: false; code: string; error: string };
 export type Rules = { minNoticeHours: number; cancelNoticeHours: number; maxDaysAhead: number; maxActivePerPhone: number };
 export type Catalogue = { services: Service[]; categories: ServiceCategoryInfo[]; timeSlots: string[]; rules: Rules; source: "supabase" | "local" };
 export type SlotAvailability = { slot: string; available: boolean };
-export type BookingInput = { service: Service; date: string; slot: string; name: string; phone: string; comment: string };
+/** `promotionId` : promotion d'où vient le visiteur (?promo=), pour le suivi. Elle n'a AUCUN effet sur le prix ni sur la réservation elle-même. */
+export type BookingInput = { service: Service; date: string; slot: string; name: string; phone: string; comment: string; promotionId?: string | undefined };
+
+/** Délai maximal d'une tentative d'attribution (elle s'exécute en arrière-plan, après la confirmation). */
+export const ATTRIBUTION_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("délai dépassé")), ms);
+    Promise.resolve(p).then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
 
 export const defaultRules: Rules = { minNoticeHours: 2, cancelNoticeHours: 2, maxDaysAhead: 180, maxActivePerPhone: 3 };
 export const localCatalogue: Catalogue = { services: localServices, categories: serviceCategories, timeSlots: settings.timeSlots, rules: defaultRules, source: "local" };
@@ -133,9 +145,29 @@ export function createApi(client: DataClient | null) {
         ...(d.ends ? { ends: hhmm(d.ends) } : {}),
       };
       saveBooking(booking);
+      // Suivi : rattache la réservation (déjà créée) à la promotion d'origine. Appel séparé, lancé EN ARRIÈRE-PLAN et jamais attendu : la
+      // confirmation s'affiche dès que la réservation existe, même si cet appel est lent ou ne se termine jamais. Il ne rappelle jamais create_booking.
+      if (input.promotionId) void api.attributeToPromotion(d.ref, input.phone, input.promotionId).catch(() => false);
       // Le serveur est la source de vérité (prix, durée, nom du soin) : on aligne l'instantané local sur sa réponse.
       const synced = await api.refreshBooking(booking);
       return { ok: true, booking: synced.ok ? synced.booking : booking };
+    },
+
+    /**
+     * Rattache une réservation existante à une promotion (attribute_booking_to_promotion). La base exige la référence ET le téléphone, un appel
+     * moins de 30 minutes après la création, et un CLIC de cette session sur cette promotion dans les 24 heures précédant la réservation ; une seule
+     * attribution par réservation. Ne modifie jamais la réservation. Au plus 2 tentatives (seulement après un échec de transport, jamais après un
+     * refus de la base), chacune limitée à 8 s (ATTRIBUTION_TIMEOUT_MS). Ne lève jamais d'erreur ; ne rappelle jamais create_booking.
+     */
+    async attributeToPromotion(ref: string, phone: string, promotionId: string, session: string = sessionKey()): Promise<boolean> {
+      if (!client) return false;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await withTimeout(rpc("attribute_booking_to_promotion", { p_ref: ref, p_phone: phone.trim(), p_promotion_id: promotionId, p_session: session }), ATTRIBUTION_TIMEOUT_MS);
+          if (!("ok" in res)) return (res.data as { ok?: boolean } | null)?.ok === true;
+        } catch { /* ignoré (réseau, délai dépassé) : le suivi ne doit jamais gêner la réservation */ }
+      }
+      return false;
     },
 
     /** Annule un rendez-vous : le serveur exige la référence ET le téléphone, et refuse moins de N h avant. */

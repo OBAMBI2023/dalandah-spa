@@ -194,7 +194,9 @@ const input = (o: Partial<PromotionInput> = {}): PromotionInput => ({
 describe("administration : écriture", () => {
   it("les champs qui ne concernent pas le type sont vidés (contrainte de la base)", () => {
     expect(toRowValues(input({ kind: "announcement", originalPrice: 10, promoPrice: 5, percentOff: 50 }))).toMatchObject({ original_price_fcfa: null, promo_price_fcfa: null, percent_off: null });
-    expect(toRowValues(input({ kind: "percent", originalPrice: 10, promoPrice: 5, percentOff: 50 }))).toMatchObject({ original_price_fcfa: null, promo_price_fcfa: null, percent_off: 50 });
+    // Type pourcentage : le prix de référence ANNONCÉ est conservé, jamais de prix promotionnel.
+    expect(toRowValues(input({ kind: "percent", originalPrice: 10, promoPrice: 5, percentOff: 50 }))).toMatchObject({ original_price_fcfa: 10, promo_price_fcfa: null, percent_off: 50 });
+    expect(toRowValues(input({ kind: "percent", originalPrice: null, promoPrice: null, percentOff: 50 }))).toMatchObject({ original_price_fcfa: null, promo_price_fcfa: null, percent_off: 50 });
     expect(toRowValues(input({ kind: "price", originalPrice: 20000, promoPrice: 15000, percentOff: 50 }))).toMatchObject({ original_price_fcfa: 20000, promo_price_fcfa: 15000, percent_off: null });
   });
   it("création : insertion dans promotions avec l'identifiant fourni, rien dans services, products ni bookings", async () => {
@@ -251,14 +253,19 @@ describe("administration : écriture", () => {
 });
 
 describe("formulaire", () => {
-  const valid: PromotionFormValues = { ...emptyPromotionForm, title: "Massage -30 %" };
+  const valid: PromotionFormValues = { ...emptyPromotionForm, title: "Massage -30 %", kind: "announcement" };
   const issues = (o: Partial<PromotionFormValues>) => {
     const r = promotionFormSchema.safeParse({ ...valid, ...o });
     return r.success ? [] : r.error.issues.map((i) => `${i.path.join(".")}`);
   };
   const has = (o: Partial<PromotionFormValues>, field: string) => expect(issues(o)).toContain(field);
 
-  it("annonce minimale valide : titre seul", () => { expect(issues({})).toEqual([]); });
+  it("annonce minimale valide : titre et type « simple annonce »", () => { expect(issues({})).toEqual([]); });
+  it("aucun type par défaut : le formulaire vide est refusé tant que le type n'est pas choisi", () => {
+    expect(emptyPromotionForm.kind).toBe("");
+    has({ kind: "" as never }, "kind");
+    has({ kind: "autre" as never }, "kind");
+  });
   it("titre obligatoire (2 à 120 caractères)", () => { has({ title: "" }, "title"); has({ title: " a " }, "title"); has({ title: "x".repeat(121) }, "title"); });
   it("description limitée à 1 000 caractères", () => { has({ description: "x".repeat(1001) }, "description"); expect(issues({ description: "x".repeat(1000) })).toEqual([]); });
   it("type prix : les deux prix sont obligatoires, entiers, et le prix promotionnel est inférieur au prix initial", () => {
@@ -269,9 +276,14 @@ describe("formulaire", () => {
     expect(issues(p("20 000", "15 000"))).toEqual([]);
     expect(issues(p("5000", "0"))).toEqual([]);
   });
-  it("type prix : les prix d'un autre type sont ignorés (pas de faux refus)", () => {
+  it("les prix d'un autre type sont ignorés (pas de faux refus)", () => {
     expect(issues({ kind: "announcement", originalPrice: "abc", promoPrice: "x", percentOff: "999" })).toEqual([]);
-    expect(issues({ kind: "percent", percentOff: "20", originalPrice: "abc" })).toEqual([]);
+    expect(issues({ kind: "percent", percentOff: "20", promoPrice: "x" })).toEqual([]);
+  });
+  it("type pourcentage : prix de référence annoncé facultatif, mais valide s'il est renseigné", () => {
+    expect(issues({ kind: "percent", percentOff: "20", originalPrice: "" })).toEqual([]);
+    expect(issues({ kind: "percent", percentOff: "20", originalPrice: "20 000" })).toEqual([]);
+    for (const bad of ["abc", "0", "-5", "12,5", "999999999"]) has({ kind: "percent", percentOff: "20", originalPrice: bad }, "originalPrice");
   });
   it("type pourcentage : entier de 1 à 99", () => {
     for (const bad of ["", "0", "100", "-5", "12,5", "abc"]) has({ kind: "percent", percentOff: bad }, "percentOff");
@@ -305,6 +317,23 @@ describe("formulaire", () => {
     expect(formToPromotionInput(promotionToForm(disabled), disabled).publication).toBe("disabled");
     expect(formToPromotionInput({ ...promotionToForm(disabled), publication: "published" }, disabled).publication).toBe("published");
     expect(formToPromotionInput(valid).publication).toBe("draft");
+  });
+  it("pourcentage avec prix de référence annoncé : sauvegarde et relecture sans perte, sans prix promotionnel", () => {
+    const p = promo({ kind: "percent", percent_off: 15, original_price_fcfa: 20000 });
+    const form = promotionToForm(p);
+    expect(form).toMatchObject({ kind: "percent", percentOff: "15", originalPrice: "20000", promoPrice: "" });
+    const back = formToPromotionInput(form, p);
+    expect(back).toMatchObject({ kind: "percent", percentOff: 15, originalPrice: 20000, promoPrice: null });
+    expect(toRowValues(back)).toMatchObject({ kind: "percent", percent_off: 15, original_price_fcfa: 20000, promo_price_fcfa: null });
+    expect(discountPercent(fromRow({ ...row(), kind: "percent", percent_off: 15, original_price_fcfa: 20000 }))).toBe(15);
+  });
+  it("pourcentage sans prix de référence : originalPrice reste null", () => {
+    expect(formToPromotionInput({ ...valid, kind: "percent", percentOff: "15", originalPrice: "" }).originalPrice).toBeNull();
+  });
+  it("les prix saisis restent ceux de la promotion : modifier le tarif du catalogue n'a aucun effet (aucun lien)", () => {
+    const p = promo({ kind: "price", original_price_fcfa: 20000, promo_price_fcfa: 15000, service_id: "massage-relaxant" });
+    expect(promotionToForm(p)).toMatchObject({ originalPrice: "20000", promoPrice: "15000" });
+    expect(discountPercent(p)).toBe(25);
   });
   it("données -> formulaire : aller-retour sans perte", () => {
     const p = promo({ kind: "price", original_price_fcfa: 20000, promo_price_fcfa: 15000, starts_on: "2026-11-01", ends_on: "2026-11-30", service_id: "pedicure", description: "Texte", status: "published" });

@@ -35,6 +35,13 @@ export const PROMO_NOTICE = "Annonce promotionnelle : le prix indiqué n’est p
 
 export const KIND_LABELS: Record<PromotionKind, string> = { price: "Prix promotionnel", percent: "Pourcentage de réduction", announcement: "Simple annonce" };
 
+/** Explication affichée sous chaque type dans le formulaire. */
+export const KIND_DESCRIPTIONS: Record<PromotionKind, string> = {
+  price: "Annoncez un prix initial et un prix promotionnel. La réduction en % est calculée automatiquement.",
+  percent: "Annoncez une réduction en %, avec en option un prix de référence annoncé. Aucun prix promotionnel n'est calculé.",
+  announcement: "Un message sans prix ni réduction (événement, nouveauté, offre à découvrir…).",
+};
+
 export const STATUS_LABELS: Record<PromotionStatus, string> = { draft: "Brouillon", scheduled: "Programmée", active: "Active", expired: "Expirée", disabled: "Désactivée" };
 
 export function fromRow(r: PromotionRow): Promotion {

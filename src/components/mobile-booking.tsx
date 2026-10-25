@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fr } from "date-fns/locale";
 import { addDays, format, parseISO } from "date-fns";
 import { Check, CalendarPlus, User, Calendar as CalIcon, Clock, Timer, Wallet } from "lucide-react";
@@ -10,6 +10,7 @@ import { formatFCFA, isValidPhone } from "@/lib/format";
 import { abidjanToday, endTime, longDate, useProfile, type Booking } from "@/lib/bookings";
 import { api } from "@/lib/api";
 import { useCatalogue } from "@/lib/catalogue";
+import { trackPromotion } from "@/lib/promotion-tracking";
 import { AppBar, Screen, Stepper, Img } from "@/components/app";
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
@@ -26,8 +27,13 @@ function calendarFile(b: Booking) {
   return URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
 }
 
-export function MobileBooking({ initialService }: { initialService?: string | undefined }) {
+/**
+ * `promotionId` : promotion d'où vient le visiteur (?promo=). Elle reste valable pendant toutes les étapes (l'état du parcours est interne) et sert
+ * uniquement au suivi : « réservation démarrée » à l'arrivée, puis rattachement de la réservation une fois créée. Aucun effet sur le prix.
+ */
+export function MobileBooking({ initialService, promotionId }: { initialService?: string | undefined; promotionId?: string | undefined }) {
   const profile = useProfile();
+  useEffect(() => { if (promotionId) void trackPromotion("booking_started", promotionId); }, [promotionId]);
   const catalogue = useCatalogue();
   const { services, rules } = catalogue;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -103,7 +109,7 @@ export function MobileBooking({ initialService }: { initialService?: string | un
     busy.current = true;
     setSubmitting(true);
     setError("");
-    const r = await api.createBooking({ service, date: dateIso, slot, name, phone, comment });
+    const r = await api.createBooking({ service, date: dateIso, slot, name, phone, comment, promotionId });
     setSubmitting(false);
     if (r.ok) { setDone(r.booking); return; }  // le verrou reste posé : la réservation ne repart pas
     busy.current = false;

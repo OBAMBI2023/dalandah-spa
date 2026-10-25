@@ -3,6 +3,7 @@ import { AdminError, getAdminSettings, listAdminBookings, listAdminServices } fr
 import { listAdminCategories } from "@/lib/admin-categories";
 import { listAdminServiceCategories } from "@/lib/admin-service-categories";
 import { listAdminPromotions, PromotionsNotInstalledError } from "@/lib/admin-promotions";
+import { getPromotionStats, listPromotionBookings } from "@/lib/admin-promotion-tracking";
 import { CatalogueNotInstalledError, listAdminProducts } from "@/lib/admin-products";
 import type { DataStatus } from "@/components/admin";
 
@@ -15,6 +16,9 @@ export const useAdminProducts = () => useQuery({ queryKey: ["admin", "products"]
 export const useAdminCategories = () => useQuery({ queryKey: ["admin", "categories"], queryFn: listAdminCategories, ...opts });
 export const useAdminServiceCategories = () => useQuery({ queryKey: ["admin", "service-categories"], queryFn: listAdminServiceCategories, ...opts });
 export const useAdminPromotions = () => useQuery({ queryKey: ["admin", "promotions"], queryFn: listAdminPromotions, ...opts });
+export const useAdminPromotionStats = () => useQuery({ queryKey: ["admin", "promotions", "stats"], queryFn: getPromotionStats, ...opts });
+export const usePromotionBookings = (promotionId: string | null) =>
+  useQuery({ queryKey: ["admin", "promotions", "bookings", promotionId], queryFn: () => listPromotionBookings(promotionId!), enabled: promotionId !== null, ...opts });
 export const useAdminSettings = () => useQuery({ queryKey: ["admin", "settings"], queryFn: getAdminSettings, ...opts });
 
 /** État d'affichage d'une requête : chargement, erreur (autorisation / réseau / serveur), vide ou prêt. */

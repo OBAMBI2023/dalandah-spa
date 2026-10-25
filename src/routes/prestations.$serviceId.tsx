@@ -1,16 +1,20 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { parsePromoParam } from "@/lib/promotion-tracking";
 import { ChevronLeft, Clock } from "lucide-react";
 import { formatFCFA } from "@/lib/format";
 import { useCatalogue } from "@/lib/catalogue";
 import { AppBar, Screen, Img } from "@/components/app";
 
 export const Route = createFileRoute("/prestations/$serviceId")({
+  // ?promo= : promotion d'origine, conservée jusqu'à la réservation (suivi uniquement, aucun effet sur le prix).
+  validateSearch: (s: Record<string, unknown>): { promo?: string } => { const promo = parsePromoParam(s["promo"]); return promo ? { promo } : {}; },
   head: () => ({ meta: [{ title: "Prestation | Dalanda Beauty Spa" }] }),
   component: Detail,
 });
 
 function Detail() {
   const { serviceId } = Route.useParams();
+  const { promo } = Route.useSearch();
   const { services, loaded, isError } = useCatalogue();
   const router = useRouter();
   const s = services.find((x) => x.id === serviceId);
@@ -42,7 +46,7 @@ function Detail() {
         <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock className="h-4 w-4" />{s.duration}</p>
         <p className="mt-4 text-sm text-muted-foreground">{s.description}</p>
         <p className="mt-3 text-[11px] text-muted-foreground">Tarif et durée indicatifs, à confirmer par l'établissement.</p>
-        <Link to="/reservation" search={{ service: s.id }} className="btn btn-app mt-6 w-full">Prendre rendez-vous</Link>
+        <Link to="/reservation" search={{ service: s.id, ...(promo ? { promo } : {}) }} className="btn btn-app mt-6 w-full">Prendre rendez-vous</Link>
         <Link to="/prestations" search={{ categorie: s.category }} className="btn btn-app-outline mt-3 w-full">Voir les autres soins</Link>
       </div>
     </Screen>

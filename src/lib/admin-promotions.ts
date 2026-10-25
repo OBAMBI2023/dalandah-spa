@@ -58,7 +58,8 @@ export type PromotionInput = {
 export function toRowValues(i: PromotionInput) {
   return {
     title: i.title, description: i.description, kind: i.kind,
-    original_price_fcfa: i.kind === "price" ? i.originalPrice : null,
+    // Type pourcentage : prix de référence ANNONCÉ facultatif (instantané saisi, jamais relié au catalogue) ; aucun prix promotionnel.
+    original_price_fcfa: i.kind === "price" || i.kind === "percent" ? i.originalPrice : null,
     promo_price_fcfa: i.kind === "price" ? i.promoPrice : null,
     percent_off: i.kind === "percent" ? i.percentOff : null,
     starts_on: i.startsOn, ends_on: i.endsOn, status: i.publication,
@@ -127,6 +128,7 @@ const whole = (s: string) => /^\d+$/.test(squeeze(s));
 export const promotionFormSchema = z.object({
   title: z.string().trim().min(PROMOTION_LIMITS.title.min, "Indiquez le titre de la promotion (2 caractères minimum).").max(PROMOTION_LIMITS.title.max, "Titre trop long (120 caractères maximum)."),
   description: z.string().max(PROMOTION_LIMITS.description, "Description trop longue (1 000 caractères maximum)."),
+  // Aucun type par défaut : « Choisissez un type de promotion. » tant que l'administrateur n'a pas choisi.
   kind: z.enum(["price", "percent", "announcement"], { message: "Choisissez un type de promotion." }),
   originalPrice: z.string(),
   promoPrice: z.string(),
@@ -154,6 +156,13 @@ export const promotionFormSchema = z.object({
     if (r === "") bad("percentOff", "Pourcentage de réduction : indiquez une valeur.");
     else if (!whole(r)) bad("percentOff", "Pourcentage de réduction : nombre entier uniquement.");
     else if (Number(r) < 1 || Number(r) > 99) bad("percentOff", "Pourcentage de réduction : de 1 à 99.");
+    // Prix de référence annoncé : facultatif, mais valide s'il est renseigné.
+    const ref = squeeze(v.originalPrice);
+    if (ref !== "") {
+      if (!whole(ref)) bad("originalPrice", "Prix de référence annoncé : nombre entier positif uniquement.");
+      else if (Number(ref) < 1) bad("originalPrice", "Prix de référence annoncé : 1 FCFA au minimum.");
+      else if (Number(ref) > PROMOTION_LIMITS.price) bad("originalPrice", "Prix de référence annoncé : valeur trop élevée.");
+    }
   }
   const s = v.startsOn.trim(), e = v.endsOn.trim();
   if (s !== "" && !isRealDate(s)) bad("startsOn", "Date de début invalide.");
@@ -164,7 +173,7 @@ export const promotionFormSchema = z.object({
 export type PromotionFormValues = z.infer<typeof promotionFormSchema>;
 
 export const emptyPromotionForm: PromotionFormValues = {
-  title: "", description: "", kind: "announcement", originalPrice: "", promoPrice: "", percentOff: "", startsOn: "", endsOn: "",
+  title: "", description: "", kind: "" as never, originalPrice: "", promoPrice: "", percentOff: "", startsOn: "", endsOn: "",
   publication: "draft", linkType: "none", linkId: "",
 };
 
@@ -183,7 +192,8 @@ export function formToPromotionInput(v: PromotionFormValues, current?: Pick<Prom
   const publication: PromotionPublication = current?.publication === "disabled" && v.publication === "draft" ? "disabled" : v.publication;
   return {
     title: v.title.trim(), description: v.description, kind: v.kind,
-    originalPrice: v.kind === "price" ? n(v.originalPrice) : null, promoPrice: v.kind === "price" ? n(v.promoPrice) : null,
+    originalPrice: v.kind === "price" || (v.kind === "percent" && squeeze(v.originalPrice) !== "") ? n(v.originalPrice) : null,
+    promoPrice: v.kind === "price" ? n(v.promoPrice) : null,
     percentOff: v.kind === "percent" ? n(v.percentOff) : null,
     startsOn: v.startsOn.trim() || null, endsOn: v.endsOn.trim() || null, publication,
     serviceId: v.linkType === "service" ? v.linkId : null, productId: v.linkType === "product" ? v.linkId : null,

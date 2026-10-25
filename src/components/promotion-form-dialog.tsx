@@ -3,6 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Camera, ImagePlus, Trash2, Undo2 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Img } from "@/components/app";
 import { IMAGE_TYPES, removePromotionImage, uploadPromotionImage, validateImageFile } from "@/lib/admin-images";
@@ -11,7 +14,8 @@ import {
   type PromotionFormValues,
 } from "@/lib/admin-promotions";
 import { squeeze } from "@/lib/admin-products";
-import { discountPercent, KIND_LABELS, PROMO_NOTICE, PROMOTIONS_KEY, type Promotion, type PromotionKind } from "@/lib/promotions";
+import { formatFCFA } from "@/lib/format";
+import { discountPercent, KIND_DESCRIPTIONS, KIND_LABELS, PROMO_NOTICE, PROMOTIONS_KEY, type Promotion, type PromotionKind } from "@/lib/promotions";
 
 const err = (m?: string) => (m ? <p role="alert" className="ap-error">{m}</p> : null);
 
@@ -20,7 +24,13 @@ class PhotoStepError extends Error {
   constructor(message: string, readonly created: boolean) { super(message); }
 }
 
-type Option = { id: string; name: string };
+/** Prestation ou produit proposé comme cible. `price` : tarif actuel du catalogue, utilisé UNIQUEMENT pour proposer une valeur de départ (jamais enregistré comme lien). */
+type Option = { id: string; name: string; price?: number | undefined };
+
+/** Champs de prix que chaque type conserve ; les autres sont vidés à l'enregistrement. */
+const KEPT: Record<PromotionKind, (keyof PromotionFormValues)[]> = { price: ["originalPrice", "promoPrice"], percent: ["percentOff", "originalPrice"], announcement: [] };
+const PRICE_FIELDS = ["originalPrice", "promoPrice", "percentOff"] as const;
+const FIELD_LABELS: Record<(typeof PRICE_FIELDS)[number], string> = { originalPrice: "le prix initial / de référence annoncé", promoPrice: "le prix promotionnel annoncé", percentOff: "le pourcentage de réduction" };
 
 /**
  * Création (promotion absente) ou modification d'une promotion, visuel compris. Un seul bouton enregistre tout :
@@ -41,13 +51,31 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
   const newId = useRef(newPromotionId());
   const created = useRef(false);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PromotionFormValues>({
+  const { register, handleSubmit, setValue, getValues, watch, formState: { errors } } = useForm<PromotionFormValues>({
     resolver: zodResolver(promotionFormSchema),
     defaultValues: promotion ? promotionToForm(promotion) : emptyPromotionForm,
   });
   const v = watch();
   const kind = v.kind as PromotionKind;
   const id = promotion?.id ?? newId.current;
+
+  // Changer de type quand des valeurs saisies seraient perdues demande confirmation (rien n'est effacé tant que l'on n'a pas confirmé).
+  const kindField = register("kind");
+  const [pendingKind, setPendingKind] = useState<{ kind: PromotionKind; lost: (typeof PRICE_FIELDS)[number][] } | null>(null);
+  const changeKind = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value as PromotionKind;
+    const current = getValues("kind") as PromotionKind | "";
+    const lost = current === "" ? [] : PRICE_FIELDS.filter((k) => getValues(k).trim() !== "" && !KEPT[next].includes(k));
+    if (lost.length === 0) { void kindField.onChange(e); return; }
+    setValue("kind", current as PromotionKind); // remet le choix précédent à l'écran en attendant la confirmation
+    setPendingKind({ kind: next, lost });
+  };
+  const confirmKind = () => {
+    if (!pendingKind) return;
+    for (const k of pendingKind.lost) setValue(k, "");
+    setValue("kind", pendingKind.kind, { shouldValidate: true, shouldDirty: true });
+    setPendingKind(null);
+  };
 
   // Changer de type de lien vide l'élément choisi (il appartenait à l'autre liste).
   const lastLink = useRef(v.linkType);
@@ -129,6 +157,11 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
     save.mutate(values);
   });
 
+  // Tarif actuel de la cible choisie : proposé comme valeur de DÉPART seulement (bouton explicite), jamais relié à la promotion.
+  const targetPrice = (v.linkType === "service" ? services : v.linkType === "product" ? products : []).find((x) => x.id === v.linkId)?.price;
+  const canCopyTariff = (kind === "price" || kind === "percent") && typeof targetPrice === "number" && targetPrice > 0;
+  const copyTariff = () => { if (typeof targetPrice === "number") setValue("originalPrice", String(targetPrice), { shouldValidate: true, shouldDirty: true }); };
+
   const linkOptions = v.linkType === "service" ? services : v.linkType === "product" ? products : [];
   // La cible actuelle reste sélectionnable même si elle n'est plus dans la liste (prestation ou produit introuvable).
   const options = v.linkId && !linkOptions.some((x) => x.id === v.linkId) ? [...linkOptions, { id: v.linkId, name: v.linkId }] : linkOptions;
@@ -185,13 +218,18 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
                 <textarea id="pr-description" className="ap-textarea" rows={3} {...register("description")} />
                 {err(errors.description?.message)}
               </div>
-              <div>
-                <label className="ap-label" htmlFor="pr-kind">Type de promotion *</label>
-                <select id="pr-kind" className="ap-select" {...register("kind")}>
-                  {(Object.keys(KIND_LABELS) as PromotionKind[]).map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
-                </select>
-                {err(errors.kind?.message)}
-              </div>
+              <fieldset aria-describedby={errors.kind ? "pr-kind-error" : undefined}>
+                <legend className="ap-label">Type de promotion *</legend>
+                <div className="grid gap-2">
+                  {(Object.keys(KIND_LABELS) as PromotionKind[]).map((k) => (
+                    <label key={k} className="ap-switch-row" style={{ alignItems: "flex-start" }}>
+                      <input type="radio" value={k} className="mt-1 h-4 w-4" {...kindField} onChange={changeKind} />
+                      <div><strong>{KIND_LABELS[k]}</strong><span>{KIND_DESCRIPTIONS[k]}</span></div>
+                    </label>
+                  ))}
+                </div>
+                {errors.kind && <p id="pr-kind-error" role="alert" className="ap-error">{errors.kind.message}</p>}
+              </fieldset>
               {kind === "price" && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -210,10 +248,24 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
                 </div>
               )}
               {kind === "percent" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="ap-label" htmlFor="pr-percent">Pourcentage de réduction annoncé *</label>
+                    <input id="pr-percent" inputMode="numeric" className="ap-input" placeholder="20" {...register("percentOff")} />
+                    {err(errors.percentOff?.message)}
+                  </div>
+                  <div>
+                    <label className="ap-label" htmlFor="pr-reference">Prix de référence annoncé (FCFA) <span className="ap-muted-text" style={{ fontWeight: 400 }}>(facultatif)</span></label>
+                    <input id="pr-reference" inputMode="numeric" className="ap-input" {...register("originalPrice")} />
+                    {err(errors.originalPrice?.message)}
+                  </div>
+                  <p className="ap-hint sm:col-span-2">Aucun prix promotionnel n'est calculé : seul le pourcentage est annoncé. Le prix de référence, s'il est renseigné, est affiché comme « prix de référence annoncé ».</p>
+                </div>
+              )}
+              {canCopyTariff && (
                 <div>
-                  <label className="ap-label" htmlFor="pr-percent">Pourcentage de réduction annoncé *</label>
-                  <input id="pr-percent" inputMode="numeric" className="ap-input" placeholder="20" {...register("percentOff")} />
-                  {err(errors.percentOff?.message)}
+                  <button type="button" className="ap-btn" disabled={save.isPending} onClick={copyTariff}>Reprendre le tarif du catalogue</button>
+                  <p className="ap-hint">Copie le tarif actuel ({formatFCFA(targetPrice!)}) dans le champ « {kind === "price" ? "Prix initial annoncé" : "Prix de référence annoncé"} ». C'est seulement une valeur de départ, modifiable : elle ne suit pas le tarif réel.</p>
                 </div>
               )}
               {kind !== "announcement" && <p className="ap-notice ap-notice-info">{PROMO_NOTICE}</p>}
@@ -283,6 +335,21 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
             </button>
           </div>
         </form>
+
+        <AlertDialog open={!!pendingKind} onOpenChange={(o) => { if (!o) setPendingKind(null); }}>
+          <AlertDialogContent className="ap-dialog max-w-md">
+            <AlertDialogHeader className="ap-dialog-head text-left">
+              <AlertDialogTitle className="ap-dialog-title">Changer le type de promotion ?</AlertDialogTitle>
+              <AlertDialogDescription className="ap-dialog-desc">
+                Le type « {pendingKind ? KIND_LABELS[pendingKind.kind] : ""} » ne conserve pas {pendingKind?.lost.map((k) => FIELD_LABELS[k]).join(", ")} : {pendingKind && pendingKind.lost.length > 1 ? "ces valeurs seront effacées" : "cette valeur sera effacée"} du formulaire.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="ap-dialog-foot !flex-row !space-x-0">
+              <AlertDialogCancel className="ap-btn !mt-0">Garder le type actuel</AlertDialogCancel>
+              <button type="button" className="ap-btn ap-btn-primary" onClick={confirmKind}>Changer le type</button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

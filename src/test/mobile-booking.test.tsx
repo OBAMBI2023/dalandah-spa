@@ -8,6 +8,7 @@ const svc = { id: "massage-dos", name: "Massage dos et nuque", category: "massag
 const mocks = vi.hoisted(() => ({
   createBooking: vi.fn(),
   getAvailability: vi.fn(),
+  track: vi.fn(),
   remote: true,
 }));
 
@@ -18,6 +19,7 @@ vi.mock("@/lib/api", () => ({
     getAvailability: mocks.getAvailability,
   },
 }));
+vi.mock("@/lib/promotion-tracking", () => ({ trackPromotion: mocks.track }));
 vi.mock("@/lib/catalogue", () => ({
   useCatalogue: () => ({
     services: [svc], timeSlots: ["09:00"], source: "supabase", loaded: true, isError: false, refetch: () => {},
@@ -42,9 +44,9 @@ const booking = {
   createdAt: "2030-01-01T00:00:00.000Z", ends: "09:30",
 };
 
-function setup() {
+function setup(promotionId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><MobileBooking /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><MobileBooking promotionId={promotionId} /></QueryClientProvider>);
 }
 
 /** Parcourt les étapes 1 à 3 puis arrive sur le récapitulatif (étape 4). */
@@ -171,5 +173,61 @@ describe("formulaire de réservation : enregistrement serveur, sans WhatsApp", (
 
     expect(await screen.findByText(/Mode local/)).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("réservation depuis une promotion : suivi sans effet sur la réservation", () => {
+  const PROMO = "11111111-1111-4111-8111-111111111111";
+  beforeEach(() => {
+    mocks.remote = true;
+    mocks.createBooking.mockReset().mockResolvedValue({ ok: true, booking });
+    mocks.getAvailability.mockReset().mockResolvedValue([{ slot: "09:00", available: true }]);
+    mocks.track.mockReset().mockResolvedValue(true);
+    vi.stubGlobal("open", vi.fn(() => ({})));
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("arrivée avec ?promo= : « réservation démarrée » est suivie une seule fois, même après avoir parcouru toutes les étapes", async () => {
+    setup(PROMO);
+    expect(mocks.track).toHaveBeenCalledTimes(1);
+    expect(mocks.track).toHaveBeenCalledWith("booking_started", PROMO);
+    await toSummary();
+    expect(mocks.track).toHaveBeenCalledTimes(1);
+  });
+
+  it("l'identifiant de la promotion est conservé jusqu'à la création et transmis à la création de la réservation", async () => {
+    setup(PROMO);
+    await toSummary();
+    fireEvent.click(send());
+    expect(await screen.findByText(CONFIRMED)).toBeInTheDocument();
+    expect(mocks.createBooking).toHaveBeenCalledTimes(1);
+    expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({ service: svc, slot: "09:00", promotionId: PROMO }));
+  });
+
+  it("le prix affiché au récapitulatif reste celui de la prestation (aucune remise appliquée)", async () => {
+    setup(PROMO);
+    await toSummary();
+    expect(screen.getAllByText(/10\s?000/).length).toBeGreaterThan(0);
+    expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it("sans promotion : aucun suivi, et la réservation est envoyée comme avant", async () => {
+    setup();
+    await toSummary();
+    fireEvent.click(send());
+    expect(await screen.findByText(CONFIRMED)).toBeInTheDocument();
+    expect(mocks.track).not.toHaveBeenCalled();
+    expect(mocks.createBooking.mock.calls[0]![0].promotionId).toBeUndefined();
+  });
+
+  it("échec de la réservation : message d'erreur, nouvel essai possible avec la même promotion", async () => {
+    mocks.createBooking.mockResolvedValueOnce({ ok: false, code: "network", error: "Connexion impossible." }).mockResolvedValue({ ok: true, booking });
+    setup(PROMO);
+    await toSummary();
+    fireEvent.click(send());
+    expect(await screen.findByText("Connexion impossible.")).toBeInTheDocument();
+    fireEvent.click(send());
+    expect(await screen.findByText(CONFIRMED)).toBeInTheDocument();
+    expect(mocks.createBooking.mock.calls.map((c) => c[0].promotionId)).toEqual([PROMO, PROMO]);
   });
 });

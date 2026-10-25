@@ -1,9 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MobileBooking } from "@/components/mobile-booking";
+import { parsePromoParam } from "@/lib/promotion-tracking";
 
 export const Route = createFileRoute("/reservation")({
-  validateSearch: (s: Record<string, unknown>): { service?: string } =>
-    typeof s.service === "string" ? { service: s.service } : {},
+  // ?service= : prestation choisie · ?promo= : promotion d'origine (suivi uniquement, aucun effet sur le prix).
+  validateSearch: (s: Record<string, unknown>): { service?: string; promo?: string } => {
+    const promo = parsePromoParam(s["promo"]);
+    return { ...(typeof s["service"] === "string" ? { service: s["service"] } : {}), ...(promo ? { promo } : {}) };
+  },
   head: () => ({
     meta: [
       { title: "Réserver un soin | Dalanda Beauty-Spa" },
@@ -17,6 +21,6 @@ export const Route = createFileRoute("/reservation")({
 
 // Un seul parcours de réservation (mobile et bureau) : il enregistre la réservation sur le serveur, sans passer par WhatsApp.
 function BookingPage() {
-  const { service } = Route.useSearch();
-  return <MobileBooking initialService={service} />;
+  const { service, promo } = Route.useSearch();
+  return <MobileBooking initialService={service} promotionId={promo} />;
 }

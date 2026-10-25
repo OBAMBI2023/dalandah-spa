@@ -12,7 +12,8 @@ import { PromotionCard } from "@/components/promotion-card";
 import { PromotionFormDialog } from "@/components/promotion-form-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { deleteAdminPromotion, setPromotionPublication } from "@/lib/admin-promotions";
-import { useAdminProducts, useAdminPromotions, useAdminServices, viewState } from "@/lib/admin-queries";
+import { conversionRate, CONVERSION_DEFINITION, TRACKING_LIMITS, TrackingNotInstalledError, type PromotionStats } from "@/lib/admin-promotion-tracking";
+import { useAdminProducts, useAdminPromotionStats, useAdminPromotions, useAdminServices, usePromotionBookings, viewState } from "@/lib/admin-queries";
 import { formatFCFA } from "@/lib/format";
 import {
   discountPercent, KIND_LABELS, periodLabel, PROMOTIONS_KEY, promotionStatus, STATUS_LABELS, type Promotion, type PromotionStatus,
@@ -49,12 +50,53 @@ function StatusPill({ status }: { status: PromotionStatus }) {
   return <span className={`ap-pill ${PILL[status]}`}>{STATUS_LABELS[status]}</span>;
 }
 
+/** Suivi d'une promotion : chiffres et réservations attribuées (données personnelles visibles des seuls administrateurs). */
+function TrackingDetail({ promotionId, stats, available }: { promotionId: string; stats: PromotionStats | undefined; available: boolean }) {
+  const bookings = usePromotionBookings(available ? promotionId : null);
+  if (!available) return <p className="ap-hint">Le suivi n'est pas disponible pour le moment.</p>;
+  const s = stats;
+  const c = conversionRate(s);
+  return (
+    <section aria-label="Suivi de la promotion" className="space-y-3">
+      <h3 className="ap-section-title">Suivi</h3>
+      <dl className="grid grid-cols-2 gap-2 text-sm">
+        <div><dt className="ap-muted-text">Impressions (visites uniques)</dt><dd className="font-semibold">{s?.impressions ?? 0}</dd></div>
+        <div><dt className="ap-muted-text">Clics</dt><dd className="font-semibold">{s?.clicks ?? 0}</dd></div>
+        <div><dt className="ap-muted-text">Réservations démarrées</dt><dd className="font-semibold">{s?.bookingStarted ?? 0}</dd></div>
+        <div><dt className="ap-muted-text">Réservations créées</dt><dd className="font-semibold">{s?.bookingsCreated ?? 0}</dd></div>
+        <div><dt className="ap-muted-text">Confirmées</dt><dd className="font-semibold">{s?.bookingsConfirmed ?? 0}</dd></div>
+        <div><dt className="ap-muted-text">Annulées</dt><dd className="font-semibold">{s?.bookingsCancelled ?? 0}</dd></div>
+        <div className="col-span-2"><dt className="ap-muted-text">Conversion ({s?.bookingsCreated ?? 0} réservation(s) ÷ {s?.clicks ?? 0} clic(s))</dt><dd className="font-semibold">{c === null ? "— (aucun clic)" : `${String(c).replace(".", ",")} %`}</dd></div>
+      </dl>
+      <h4 className="text-sm font-medium">Réservations attribuées</h4>
+      {bookings.isPending ? <p className="ap-hint" aria-busy="true">Chargement…</p>
+        : bookings.isError ? <p role="alert" className="ap-error">Les réservations attribuées n'ont pas pu être chargées.</p>
+        : bookings.data.length === 0 ? <p className="ap-hint">Aucune réservation attribuée pour le moment.</p>
+        : (
+          <ul className="space-y-2 text-sm" aria-label="Réservations attribuées">
+            {bookings.data.map((b) => (
+              <li key={b.ref} className="rounded-lg border p-2" style={{ borderColor: "var(--ap-line)" }}>
+                <p className="font-medium">{b.serviceName} · {formatFCFA(b.price)}</p>
+                <p className="ap-muted-text">{b.date.split("-").reverse().join("/")} à {b.slot} · {b.name} · {b.phone}</p>
+                <p><span className={`ap-pill ${b.status === "confirmed" ? "ap-pill-ok" : "ap-pill-muted"}`}>{b.status === "confirmed" ? "Confirmée" : "Annulée"}</span> <span className="ap-muted-text">{b.ref}</span></p>
+              </li>
+            ))}
+          </ul>
+        )}
+      <ul className="list-disc space-y-1 pl-5 text-xs" style={{ color: "var(--ap-ink-soft)" }}>
+        {TRACKING_LIMITS.map((l) => <li key={l}>{l}</li>)}
+      </ul>
+    </section>
+  );
+}
+
 function Promotions() {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const query = useAdminPromotions();
   const servicesQuery = useAdminServices();
   const productsQuery = useAdminProducts();
+  const statsQuery = useAdminPromotionStats();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("all");
@@ -65,9 +107,17 @@ function Promotions() {
   const busy = useRef(false);
 
   const today = abidjanToday();
+  // Suivi : « non installé » n'est pas une panne (la migration n'est peut-être pas encore appliquée) ; toute autre erreur est signalée.
+  const stats = statsQuery.data ?? {};
+  const trackingMissing = statsQuery.error instanceof TrackingNotInstalledError;
+  const trackingFailed = statsQuery.isError && !trackingMissing;
+  const dash = <span className="ap-muted-text">—</span>;
+  const statOf = (id: string) => (statsQuery.isSuccess ? stats[id] : undefined);
+  const nf = new Intl.NumberFormat("fr-FR");
+  const conversion = (id: string) => { const c = conversionRate(statOf(id)); return c === null ? dash : <>{String(c).replace(".", ",")} %</>; };
   const rows = query.data ?? [];
-  const services = (servicesQuery.data ?? []).map((s) => ({ id: s.id, name: s.name }));
-  const products = (productsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name }));
+  const services = (servicesQuery.data ?? []).map((s) => ({ id: s.id, name: s.name, price: s.price }));
+  const products = (productsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name, price: p.price }));
   const linksProblem = servicesQuery.isError || productsQuery.isError ? "certaines listes (prestations ou produits) sont indisponibles." : null;
   const targetName = (p: Promotion) =>
     p.serviceId ? `Prestation : ${services.find((s) => s.id === p.serviceId)?.name ?? p.serviceId}`
@@ -121,7 +171,8 @@ function Promotions() {
 
   const prices = (p: Promotion) => p.kind === "price" && p.originalPrice !== null && p.promoPrice !== null
     ? <><s className="ap-muted-text">{formatFCFA(p.originalPrice)}</s> <b>{formatFCFA(p.promoPrice)}</b></>
-    : p.kind === "percent" ? <span className="ap-muted-text">Annoncé en %</span> : <span className="ap-muted-text">—</span>;
+    : p.kind === "percent" ? (p.originalPrice !== null ? <><span className="ap-muted-text">Réf. annoncée </span><s className="ap-muted-text">{formatFCFA(p.originalPrice)}</s></> : <span className="ap-muted-text">Annoncé en %</span>)
+      : <span className="ap-muted-text">—</span>;
   const reduction = (p: Promotion) => { const d = discountPercent(p); return d === null ? "—" : `-${d}%`; };
 
   const actions = (p: Promotion) => (
@@ -200,6 +251,12 @@ function Promotions() {
                     {discountPercent(p) !== null && <span className="ap-chip">{reduction(p)}</span>}
                     <span className="ml-auto">{periodLabel(p) ?? "Sans limite de dates"}</span>
                   </div>
+                  {statOf(p.id) && (
+                    <p className="ap-card-meta" aria-label="Suivi">
+                      <span>{nf.format(statOf(p.id)!.impressions)} vue{statOf(p.id)!.impressions > 1 ? "s" : ""}</span><span>{nf.format(statOf(p.id)!.clicks)} clic{statOf(p.id)!.clicks > 1 ? "s" : ""}</span>
+                      <span>{nf.format(statOf(p.id)!.bookingsCreated)} réservation{statOf(p.id)!.bookingsCreated > 1 ? "s" : ""}</span><span>Conversion {conversion(p.id)}</span>
+                    </p>
+                  )}
                   {actions(p)}
                 </li>
               ))}
@@ -215,6 +272,10 @@ function Promotions() {
                     <th>Prix annoncés</th>
                     <th className="ap-num">Réduction</th>
                     <th>Période</th>
+                    <th className="ap-num" title="Visites uniques par session et par jour">Impressions</th>
+                    <th className="ap-num">Clics</th>
+                    <th className="ap-num" title="Réservations créées et rattachées à la promotion">Réservations</th>
+                    <th className="ap-num" title={CONVERSION_DEFINITION}>Conversion</th>
                     <th>Statut</th>
                     <th className="ap-num">Actions</th>
                   </tr>
@@ -230,6 +291,10 @@ function Promotions() {
                       <td className="whitespace-nowrap">{prices(p)}</td>
                       <td className="ap-num whitespace-nowrap">{reduction(p)}</td>
                       <td className="text-sm">{periodLabel(p) ?? <span className="ap-muted-text">Sans limite de dates</span>}</td>
+                      <td className="ap-num">{statOf(p.id) ? nf.format(statOf(p.id)!.impressions) : dash}</td>
+                      <td className="ap-num">{statOf(p.id) ? nf.format(statOf(p.id)!.clicks) : dash}</td>
+                      <td className="ap-num">{statOf(p.id) ? <>{nf.format(statOf(p.id)!.bookingsCreated)}{statOf(p.id)!.bookingsCreated > 0 && <span className="ap-muted-text"> ({nf.format(statOf(p.id)!.bookingsConfirmed)} conf.)</span>}</> : dash}</td>
+                      <td className="ap-num whitespace-nowrap">{statOf(p.id) ? conversion(p.id) : dash}</td>
                       <td><StatusPill status={s} /></td>
                       <td>{actions(p)}</td>
                     </tr>
@@ -239,6 +304,22 @@ function Promotions() {
             </div>
           )}
       </section>
+
+      {trackingMissing && <Message kind="info">{statsQuery.error instanceof Error ? statsQuery.error.message : "Suivi non installé."}</Message>}
+      {trackingFailed && <Message kind="error">Les statistiques de suivi n'ont pas pu être chargées. <button className="ap-link-btn" onClick={() => void statsQuery.refetch()}>Réessayer</button></Message>}
+      {statsQuery.isSuccess && rows.length > 0 && <p className="ap-hint" role="note">Statistiques indicatives : elles peuvent être faussées (voir « Comment lire ces chiffres »).</p>}
+      {statsQuery.isSuccess && rows.length > 0 && (
+        <details className="ap-card p-4 text-sm" style={{ color: "var(--ap-ink-soft)" }}>
+          <summary className="cursor-pointer font-medium" style={{ color: "var(--ap-ink)" }}>Comment lire ces chiffres</summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li><b>Impressions</b> : visites uniques. La promotion est comptée quand au moins 50 % de la bannière (ou la moitié de l'écran pour une très haute bannière) reste visible pendant 1 seconde, onglet au premier plan, une fois par session de navigation et par jour (jour UTC).</li>
+            <li><b>Clics</b> : clics sur la bannière ou son bouton, une fois par session et par jour.</li>
+            <li><b>Réservations</b> : réservations réellement créées et rattachées à la promotion après un clic de la même session dans les 24 heures précédentes (entre parenthèses : celles encore confirmées).</li>
+            <li>{CONVERSION_DEFINITION}</li>
+            {TRACKING_LIMITS.map((l) => <li key={l}>{l}</li>)}
+          </ul>
+        </details>
+      )}
 
       {form && (
         <PromotionFormDialog key={form.promotion?.id ?? "new"} promotion={form.promotion} services={services} products={products} linksProblem={linksProblem}
@@ -253,7 +334,10 @@ function Promotions() {
               {viewing && <>Aperçu tel que vu sur le site · <StatusPill status={promotionStatus(viewing, today)} />{targetName(viewing) ? ` · ${targetName(viewing)}` : ""}</>}
             </DialogDescription>
           </DialogHeader>
-          <div className="ap-dialog-body">{viewing && <PromotionCard promotion={viewing} actions={false} />}</div>
+          <div className="ap-dialog-body space-y-4">
+            {viewing && <PromotionCard promotion={viewing} actions={false} />}
+            {viewing && <TrackingDetail promotionId={viewing.id} stats={statOf(viewing.id)} available={statsQuery.isSuccess} />}
+          </div>
           <div className="ap-dialog-foot">
             <button className="ap-btn" onClick={() => setViewing(null)}>Fermer</button>
             {viewing && <button className="ap-btn ap-btn-primary" onClick={() => { const p = viewing; setViewing(null); openForm(p); }}><Pencil className="h-4 w-4" aria-hidden="true" />Modifier</button>}

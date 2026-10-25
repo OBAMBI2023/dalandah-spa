@@ -25,8 +25,10 @@
     "test:sql:service-categories-mutations": "node scripts/tests/supabase/service-categories-mutations.mjs",
     "test:sql:promotions": "node scripts/tests/supabase/promotions.mjs",
     "test:sql:promotions-mutations": "node scripts/tests/supabase/promotions-mutations.mjs",
+    "test:sql:promotion-tracking": "node scripts/tests/supabase/promotion-tracking.mjs",
+    "test:sql:promotion-tracking-mutations": "node scripts/tests/supabase/promotion-tracking-mutations.mjs",
     "test:sql:mutations": "node scripts/tests/supabase/mutations.mjs",
-    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/products.mjs && node scripts/tests/supabase/products-audit.mjs && node scripts/tests/supabase/categories.mjs && node scripts/tests/supabase/service-categories.mjs && node scripts/tests/supabase/promotions.mjs && node scripts/tests/supabase/mutations.mjs && node scripts/tests/supabase/categories-mutations.mjs && node scripts/tests/supabase/service-categories-mutations.mjs"
+    "test:sql:all": "node scripts/tests/supabase/test.mjs && node scripts/tests/supabase/probe.mjs && node scripts/tests/supabase/guard.mjs && node scripts/tests/supabase/limits.mjs && node scripts/tests/supabase/products.mjs && node scripts/tests/supabase/products-audit.mjs && node scripts/tests/supabase/categories.mjs && node scripts/tests/supabase/service-categories.mjs && node scripts/tests/supabase/promotions.mjs && node scripts/tests/supabase/promotion-tracking.mjs && node scripts/tests/supabase/mutations.mjs && node scripts/tests/supabase/categories-mutations.mjs && node scripts/tests/supabase/service-categories-mutations.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

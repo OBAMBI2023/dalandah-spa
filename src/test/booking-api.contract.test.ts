@@ -3,6 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { resetPromotionTracking, sessionKey } from "@/lib/promotion-tracking";
 import { createApi, type DataClient } from "@/lib/api";
 import { getBookings } from "@/lib/bookings";
 import type { Service } from "@/data/services";
@@ -191,5 +192,96 @@ describe("mode local (sans Supabase)", () => {
     expect(first.ok).toBe(true);
     expect(await api.createBooking(input(s, D(5), "09:00", { phone: "0102030405" }))).toMatchObject({ ok: false, code: "slot_unavailable" });
     expect((await api.getAvailability(D(5), s)).find((x) => x.slot === "09:00")?.available).toBe(false);
+  });
+});
+
+describe("attribution à une promotion (suivi) : la réservation reste strictement inchangée", () => {
+  const api = createApi(fakeClient());
+  const PROMO = "00000000-0000-0000-0000-0000000000b1";
+  const DRAFT = "00000000-0000-0000-0000-0000000000b2";
+  const owner = async (sql: string) => { await asRole(null); const r = await db.query(sql); await asRole("anon"); return r.rows as Record<string, unknown>[]; };
+  const attributed = async (ref: string) => (await owner(`select a.promotion_id from public.promotion_bookings a join public.bookings b on b.id = a.booking_id where b.ref = '${ref}'`)).map((r) => r["promotion_id"]);
+  // L'attribution part en arrière-plan : on attend qu'elle ait eu lieu (ou, pour les cas refusés, qu'elle ait eu le temps d'avoir lieu).
+  const waitAttributed = async (ref: string, ms = 2000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { const a = await attributed(ref); if (a.length) return a; await new Promise((res) => setTimeout(res, 25)); }
+    return attributed(ref);
+  };
+  const settle = () => new Promise((res) => setTimeout(res, 300));
+  // Clic enregistré par le site (événement de la session courante) avant la réservation.
+  const click = (promo: string, session: string = sessionKey()) =>
+    owner(`insert into public.promotion_events (promotion_id, event, session_key) values ('${promo}', 'click', '${session}') on conflict on constraint promotion_events_once do update set last_at = now()`);
+
+  beforeAll(async () => {
+    // Promotion qui annonce 1 FCFA : elle ne doit avoir AUCUN effet sur le montant de la réservation.
+    await owner(`insert into public.promotions (id, title, kind, status, original_price_fcfa, promo_price_fcfa, service_id) values ('${PROMO}', 'Nattes à 1 FCFA', 'price', 'published', 15000, 1, 'nattes')`);
+    await owner(`insert into public.promotions (id, title, kind, status) values ('${DRAFT}', 'Brouillon', 'announcement', 'draft')`);
+  });
+
+  it("réservation faite après un clic sur la promotion : créée au prix de la prestation, puis rattachée à la promotion", async () => {
+    await click(PROMO);
+    const r = await api.createBooking({ ...input(svc("nattes"), D(20), "09:00", { phone: "+225 01 00 00 00 21" }), promotionId: PROMO });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.booking.price).toBe(15000);   // jamais le prix annoncé par la promotion
+    expect(await waitAttributed(r.booking.ref)).toEqual([PROMO]);
+    expect((await owner(`select price_fcfa, status from public.bookings where ref = '${r.booking.ref}'`))[0]).toEqual({ price_fcfa: 15000, status: "confirmed" });
+  });
+
+  it("une réservation n'est attribuée qu'une fois, même si l'appel est répété", async () => {
+    await click(PROMO);
+    const r = await api.createBooking({ ...input(svc("nattes"), D(21), "09:00", { phone: "+225 01 00 00 00 22" }), promotionId: PROMO });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    await waitAttributed(r.booking.ref);
+    expect(await api.attributeToPromotion(r.booking.ref, r.booking.phone, PROMO)).toBe(true);
+    expect(await api.attributeToPromotion(r.booking.ref, r.booking.phone, PROMO)).toBe(true);
+    expect(await attributed(r.booking.ref)).toEqual([PROMO]);
+  });
+
+  it("adresse ?promo= ouverte SANS clic sur la bannière (nouvelle session) : la réservation réussit, elle n'est pas attribuée", async () => {
+    resetPromotionTracking();   // nouvelle session : aucun clic enregistré
+    const r = await api.createBooking({ ...input(svc("manucure"), D(22), "09:00", { phone: "+225 01 00 00 00 26" }), promotionId: PROMO });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    await settle();
+    expect(await attributed(r.booking.ref)).toEqual([]);
+  });
+
+  it("clic d'une AUTRE session : la réservation réussit, sans attribution", async () => {
+    await click(PROMO, "e".repeat(32));
+    const r = await api.createBooking(input(svc("pedicure"), D(23), "09:00", { phone: "+225 01 00 00 00 27" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(await api.attributeToPromotion(r.booking.ref, r.booking.phone, PROMO, "d".repeat(32))).toBe(false);
+    expect(await attributed(r.booking.ref)).toEqual([]);
+  });
+
+  it("réservation sans promotion : fonctionne comme avant, aucune attribution", async () => {
+    const before = (await owner("select count(*)::int n from public.promotion_bookings"))[0]!["n"] as number;
+    const r = await api.createBooking(input(svc("pedicure"), D(24), "09:00", { phone: "+225 01 00 00 00 23" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.booking.price).toBe(8000);
+    await settle();
+    expect((await owner("select count(*)::int n from public.promotion_bookings"))[0]!["n"]).toBe(before);
+  });
+
+  it("promotion non admissible (brouillon) : la réservation réussit quand même, sans attribution", async () => {
+    await click(DRAFT);
+    const r = await api.createBooking({ ...input(svc("manucure"), D(25), "09:00", { phone: "+225 01 00 00 00 24" }), promotionId: DRAFT });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    await settle();
+    expect(await attributed(r.booking.ref)).toEqual([]);
+  });
+
+  it("mauvais téléphone ou promotion inconnue : aucune attribution, aucune erreur levée", async () => {
+    const r = await api.createBooking(input(svc("manucure"), D(26), "09:00", { phone: "+225 01 00 00 00 25" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(await api.attributeToPromotion(r.booking.ref, "+225 09 09 09 09 09", PROMO)).toBe(false);
+    expect(await api.attributeToPromotion(r.booking.ref, r.booking.phone, "00000000-0000-0000-0000-0000000000ff")).toBe(false);
+    expect(await attributed(r.booking.ref)).toEqual([]);
   });
 });
