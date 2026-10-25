@@ -135,7 +135,8 @@ describe("pages d'administration branchées sur la base", () => {
 
     expect(await screen.findByText("Massage dos et nuque")).toBeInTheDocument();
     expect(screen.getByText("Inactive")).toBeInTheDocument();
-    expect(screen.getByText(/Tarifs et durées de démonstration/)).toBeInTheDocument();
+    expect(screen.getByText("Tarif à confirmer")).toBeInTheDocument(); // donnée de démonstration signalée sur la ligne concernée
+    expect(screen.queryByText(/Tarifs et durées de démonstration/)).not.toBeInTheDocument(); // plus de bandeau provisoire : la gestion est réelle
   });
 
   it("paramètres : règles lues en base", async () => {

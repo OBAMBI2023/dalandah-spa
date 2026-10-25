@@ -284,3 +284,12 @@
 .ap-dropzone[data-over="true"] { border-color: var(--ap-accent); background: var(--ap-accent-soft); }
 .ap-ref { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.82rem; letter-spacing: 0.02em; cursor: default; }
 .ap-ref::placeholder { font-family: var(--font-sans); font-style: italic; letter-spacing: 0; color: var(--ap-muted); }
+
+/* Liste de prestations : cartes compactes sur mobile, extrait de description, mention « à confirmer » */
+.ap-cards { list-style: none; margin: 0; padding: 0; }
+.ap-card-row { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.95rem 1rem; border-bottom: 1px solid var(--ap-line); }
+.ap-card-row:last-child { border-bottom: 0; }
+.ap-card-row[data-active="false"] .ap-thumb, .ap-table tr[data-active="false"] .ap-thumb { opacity: 0.55; }
+.ap-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; font-size: 0.85rem; color: var(--ap-ink-soft); }
+.ap-clamp { margin-top: 0.15rem; font-size: 0.8rem; line-height: 1.35; color: var(--ap-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 34rem; }
+.ap-demo-note { margin-top: 0.15rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.01em; color: var(--ap-warn); }
