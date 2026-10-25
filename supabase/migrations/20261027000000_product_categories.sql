@@ -88,16 +88,19 @@ grant select on public.product_categories to authenticated; -- RLS : administrat
 --   invalid_input   : nom vide, trop court (< 2), trop long (> 60) ou contenant un caractère de contrôle ou de sens d'écriture ;
 --   category_exists : une catégorie portant déjà ce nom (casse, espaces, forme Unicode et accents combinants ignorés) existe.
 -- Un utilisateur non administrateur reçoit l'erreur 42501 (comme les fonctions de produits).
+-- Ordre voulu : le rôle admin est vérifié AVANT tout traitement du texte fourni (la normalisation d'un très long texte a un coût :
+-- un utilisateur non administrateur ne doit pas pouvoir la provoquer).
 create function public.admin_create_category(p_name text) returns jsonb
 language plpgsql security definer set search_path = '' as
 $$
 declare
-  v_name text := private.category_name(p_name);
+  v_name text;
   v_id   bigint;
 begin
   if not (select private.is_admin()) then
     raise exception 'réservé aux administrateurs' using errcode = '42501';
   end if;
+  v_name := private.category_name(p_name);
   if char_length(v_name) not between 2 and 60
      or v_name ~ '[[:cntrl:]]'
      or v_name ~ '[\u061c\u180e\u200e\u200f\u202a-\u202e\u2066-\u2069]' then

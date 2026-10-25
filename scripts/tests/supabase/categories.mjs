@@ -313,6 +313,45 @@ await as("service_role");
   ok("service_role : ces refus n'ont rien écrit", (await count()) === nSr + 1);
 }
 
+// --- 7c. Ordre des opérations : les droits sont vérifiés AVANT toute normalisation du nom ---------------------------------------------
+// Sonde : dans une base jetable, private.category_name est remplacée par une version qui lève une erreur reconnaissable dès qu'elle est
+// appelée. Un non-administrateur doit être refusé (42501) SANS que la normalisation soit appelée ; l'administrateur, lui, doit l'atteindre
+// (ce qui prouve que la sonde fonctionne). Le coût du traitement d'un très long texte ne peut donc pas être provoqué par un non-administrateur.
+{
+  const d = new PGlite();
+  await d.exec(`
+    create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+    create schema auth; create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+    grant usage on schema public, auth to anon, authenticated, service_role; grant execute on function auth.uid() to anon, authenticated;
+    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;`);
+  await d.exec(files.map(read).join("\n"));
+  await d.exec(readFileSync(`${root}/seed.sql`, "utf8"));
+  await d.exec(`insert into auth.users (id, email) values ('${ADMIN}', 'admin@example.test'), ('${CLIENT}', 'cliente@example.test');
+                insert into public.user_roles (user_id, role) values ('${ADMIN}', 'admin');`);
+  await d.exec(`create or replace function private.category_name(p text) returns text language sql immutable set search_path = ''
+                as $$ select (case when p is not null then 'NORMALISATION_APPELEE' else '0' end)::int::text $$`);
+  const nBefore = (await d.query("select count(*)::int n from public.product_categories")).rows[0].n;
+  const call = async (sub, name) => {
+    await d.exec("reset role"); await d.exec("set role authenticated");
+    await d.query("select set_config('request.jwt.claim.sub', $1, false)", [sub]);
+    try { return { r: (await d.query("select public.admin_create_category($1) as r", [name])).rows[0].r }; } catch (e) { return { error: e.message }; }
+  };
+  const nonAdmin = await call(CLIENT, "Intrus");
+  ok("non-administrateur : refusé (42501) AVANT tout appel à la normalisation", /réservé aux administrateurs/.test(nonAdmin.error ?? "") && !/NORMALISATION_APPELEE/.test(nonAdmin.error ?? ""), JSON.stringify(nonAdmin));
+  const huge = await call(CLIENT, "Soins" + String.fromCharCode(0xa0) + "du ".repeat(2_000_000));
+  ok("non-administrateur, texte de plusieurs Mo : refusé avant tout traitement du texte", /réservé aux administrateurs/.test(huge.error ?? "") && !/NORMALISATION_APPELEE/.test(huge.error ?? ""), String(huge.error).slice(0, 120));
+  const nullName = await call(CLIENT, null);
+  ok("non-administrateur, nom nul : refusé avant tout traitement", /réservé aux administrateurs/.test(nullName.error ?? ""), JSON.stringify(nullName));
+  const admin = await call(ADMIN, "Parfums");
+  ok("administrateur : la normalisation est bien atteinte après le contrôle des droits (la sonde fonctionne)", /NORMALISATION_APPELEE/.test(admin.error ?? ""), JSON.stringify(admin));
+  await d.exec("reset role");
+  ok("aucune de ces tentatives n'a écrit une ligne", (await d.query("select count(*)::int n from public.product_categories")).rows[0].n === nBefore);
+  await d.close();
+}
+
 // --- 8. Non-régression ----------------------------------------------------------------------------
 await as(null);
 ok("après toutes les opérations : produits, coûts, mouvements de stock et prestations strictement identiques", (await snapshot()) === before);
