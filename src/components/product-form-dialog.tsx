@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Camera, ImagePlus, Trash2, Undo2 } from "lucide-react";
+import { Camera, ImagePlus, Plus, Trash2, Undo2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Img } from "@/components/app";
+import { CategoryCreateDialog } from "@/components/category-create-dialog";
 import { getProduct } from "@/data/products";
+import { mergeCategories } from "@/lib/admin-categories";
 import { IMAGE_TYPES, removeProductImage, uploadProductImage, validateImageFile } from "@/lib/admin-images";
 import {
   createProductAuto, emptyProductForm, findCreated, formToInput, listAdminProducts, nextSku, ProductActionError, productFormSchema, productToForm, productToInput, skuBase, squeeze,
@@ -27,8 +29,10 @@ class PhotoStepError extends Error {
  * La référence n'est jamais saisie : générée à partir du nom à la création, permanente ensuite. Le résumé, les caractéristiques, la contenance
  * et les conseils ne sont plus proposés, mais ceux d'un produit existant sont renvoyés tels quels à la modification (rien n'est effacé).
  */
-export function ProductFormDialog({ product, categories, existing, onClose, onSaved }: {
-  product: AdminProduct | null; categories: readonly string[]; existing: { ids: readonly string[]; skus: readonly string[] };
+export function ProductFormDialog({ product, categories, canCreateCategory = false, categoriesProblem = null, onRetryCategories, existing, onClose, onSaved }: {
+  product: AdminProduct | null; categories: readonly string[]; canCreateCategory?: boolean;
+  /** Message d'une erreur INATTENDUE de chargement des catégories enregistrées (pas « migration non appliquée »). */
+  categoriesProblem?: string | null; onRetryCategories?: () => void; existing: { ids: readonly string[]; skus: readonly string[] };
   onClose: () => void; onSaved: (text: string, kind?: "ok" | "error") => void;
 }) {
   const qc = useQueryClient();
@@ -39,12 +43,24 @@ export function ProductFormDialog({ product, categories, existing, onClose, onSa
   // Création : dernier essai dont on ignore l'issue (réponse perdue ?), et création confirmée (jamais refaite dans ce formulaire).
   const attempted = useRef<{ id: string; sku: string } | null>(null);
   const created = useRef<{ id: string; sku: string } | null>(null);
-  const { register, handleSubmit, setError, watch, formState: { errors } } = useForm<ProductFormValues>({
+  const { register, handleSubmit, setError, setValue, watch, formState: { errors } } = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: product ? productToForm(product) : emptyProductForm,
   });
-  // Catégorie inconnue de la liste proposée (produit importé) : on la garde sélectionnable pour ne pas la perdre.
-  const options = product && !categories.includes(product.category) ? [...categories, product.category] : categories;
+  // Catégories proposées : celles de la page, celles créées pendant cette saisie et, en modification, celle du produit (même hors liste) pour ne pas la perdre.
+  const [createdCategories, setCreatedCategories] = useState<string[]>([]);
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [categoryDialog, setCategoryDialog] = useState(false);
+  const options = mergeCategories(categories, createdCategories, product ? [product.category] : []);
+  const optionsKey = options.join("\u0001");
+  // La catégorie qui vient d'être créée est sélectionnée dès que la liste l'affiche (le reste du brouillon n'est pas touché).
+  useEffect(() => {
+    if (pendingCategory && options.includes(pendingCategory)) {
+      setValue("category", pendingCategory, { shouldValidate: true, shouldDirty: true });
+      setPendingCategory(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCategory, optionsKey]);
   const name = watch("name");
 
   // Référence : celle du produit en modification ; sinon la première variante libre pour le nom saisi (mise à jour à chaque frappe).
@@ -209,6 +225,17 @@ export function ProductFormDialog({ product, categories, existing, onClose, onSa
                     {options.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                   {err(errors.category?.message)}
+                  {categoriesProblem && (
+                    <div role="alert" className="ap-notice ap-notice-error mt-1.5 !items-center !gap-2 !px-2.5 !py-1.5 text-xs">
+                      <p className="flex-1">Les catégories enregistrées n'ont pas pu être chargées : {categoriesProblem} La liste affichée peut être incomplète.</p>
+                      {onRetryCategories && <button type="button" className="ap-link-btn !px-1.5 !py-0.5 shrink-0" onClick={onRetryCategories}>Réessayer</button>}
+                    </div>
+                  )}
+                  {canCreateCategory && (
+                    <button type="button" className="ap-link-btn !px-0 mt-1.5 inline-flex items-center gap-1" disabled={save.isPending} onClick={() => setCategoryDialog(true)}>
+                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />Créer une catégorie
+                    </button>
+                  )}
                 </div>
               </div>
               <div>
@@ -277,6 +304,13 @@ export function ProductFormDialog({ product, categories, existing, onClose, onSa
             </button>
           </div>
         </form>
+
+        {canCreateCategory && (
+          <CategoryCreateDialog
+            open={categoryDialog} onOpenChange={setCategoryDialog} existing={options}
+            onCreated={(name) => { setCreatedCategories((prev) => (prev.includes(name) ? prev : [...prev, name])); setPendingCategory(name); }}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -11,7 +11,8 @@ import { getProduct, productCategories } from "@/data/products";
 import { formatFCFA } from "@/lib/format";
 import { SHOP_KEY } from "@/lib/shop";
 import { isAvailable, isLowStock, productStats, setProductActive, type AdminProduct } from "@/lib/admin-products";
-import { useAdminProducts, viewState } from "@/lib/admin-queries";
+import { useAdminCategories, useAdminProducts, viewState } from "@/lib/admin-queries";
+import { CategoriesNotInstalledError, mergeCategories } from "@/lib/admin-categories";
 
 export const Route = createFileRoute("/admin/produits")({
   head: () => ({ meta: [{ title: "Produits | Administration Dalanda" }] }),
@@ -80,6 +81,7 @@ function Empty({ icon: Icon, title, text, action }: { icon: typeof Package; titl
 function Produits() {
   const qc = useQueryClient();
   const query = useAdminProducts();
+  const categoriesQuery = useAdminCategories();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -89,7 +91,8 @@ function Produits() {
   const [notice, setNotice] = useState<Notice>(null);
 
   const rows = query.data ?? [];
-  const categories = [...new Set([...productCategories, ...rows.map((p) => p.category)])];
+  // Liste des catégories : celles du code, celles enregistrées en base (si la migration est appliquée) et celles des produits.
+  const categories = mergeCategories(productCategories, categoriesQuery.data ?? [], rows.map((p) => p.category));
   const shown = rows.filter((p) =>
     (cat === "all" || p.category === cat)
     && (status === "all" || (status === "active") === p.active)
@@ -98,7 +101,17 @@ function Produits() {
   const demo = rows.some((p) => p.isDemo);
   const filtered = q.trim() !== "" || cat !== "all" || status !== "all";
   const resetFilters = () => { setQ(""); setCat("all"); setStatus("all"); };
-  const openForm = (product: AdminProduct | null) => { setNotice(null); setForm({ product }); };
+  // Catégories : « migration non appliquée » n'est pas une panne (le formulaire garde la liste du code, sans action de création) ;
+  // toute AUTRE erreur (réseau, droits, serveur) est signalée dans le formulaire, avec un bouton pour réessayer.
+  const categoriesError = categoriesQuery.isError ? categoriesQuery.error : null;
+  const categoriesProblem = categoriesError && !(categoriesError instanceof CategoriesNotInstalledError)
+    ? (categoriesError instanceof Error && categoriesError.message ? categoriesError.message : "Erreur inconnue.")
+    : null;
+  const openForm = (product: AdminProduct | null) => {
+    setNotice(null);
+    if (categoriesQuery.isError) void categoriesQuery.refetch(); // la migration a peut-être été appliquée depuis : l'action de création apparaît sans recharger la page
+    setForm({ product });
+  };
 
   const toggle = useMutation({
     mutationFn: (p: AdminProduct) => setProductActive(p.id, !p.active),
@@ -232,7 +245,8 @@ function Produits() {
       </section>
 
       {form && (
-        <ProductFormDialog key={form.product?.id ?? "new"} product={form.product} categories={productCategories}
+        <ProductFormDialog key={form.product?.id ?? "new"} product={form.product} categories={categories} canCreateCategory={categoriesQuery.isSuccess}
+          categoriesProblem={categoriesProblem} onRetryCategories={() => void categoriesQuery.refetch()}
           existing={{ ids: rows.map((p) => p.id), skus: rows.map((p) => p.sku) }}
           onClose={() => setForm(null)} onSaved={(text, kind) => { setForm(null); setNotice({ kind: kind ?? "ok", text }); }} />
       )}

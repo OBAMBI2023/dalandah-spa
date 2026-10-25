@@ -60,7 +60,7 @@ function toError(error: NonNullable<Failure>, what: string): AdminError {
   return classify(error, what);
 }
 
-async function rpc<T>(fn: string, args: Record<string, unknown> | undefined, what: string): Promise<T> {
+export async function rpc<T>(fn: string, args: Record<string, unknown> | undefined, what: string): Promise<T> {
   if (!adminSupabase) throw new AdminError("server", "Base de données non configurée.");
   let res: { data: unknown; error: Failure };
   try {
@@ -73,7 +73,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown> | undefined, wha
 }
 
 /** Une réponse sans `ok: true` n'est jamais prise pour un succès. */
-function assertOk(data: unknown, what: string): void {
+export function assertOk(data: unknown, what: string): void {
   const r = data as { ok?: unknown; code?: unknown; error?: unknown } | null;
   if (r && r.ok === true) return;
   if (r && r.ok === false) throw new ProductActionError(String(r.code ?? "error"), typeof r.error === "string" && r.error ? r.error : `${what} impossible.`);

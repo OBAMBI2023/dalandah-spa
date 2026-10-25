@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { AdminError, getAdminSettings, listAdminBookings, listAdminServices } from "@/lib/admin-api";
+import { listAdminCategories } from "@/lib/admin-categories";
 import { CatalogueNotInstalledError, listAdminProducts } from "@/lib/admin-products";
 import type { DataStatus } from "@/components/admin";
 
@@ -9,6 +10,7 @@ const opts = { retry: false, staleTime: 0 } as const;
 export const useAdminBookings = () => useQuery({ queryKey: ["admin", "bookings"], queryFn: listAdminBookings, ...opts });
 export const useAdminServices = () => useQuery({ queryKey: ["admin", "services"], queryFn: listAdminServices, ...opts });
 export const useAdminProducts = () => useQuery({ queryKey: ["admin", "products"], queryFn: listAdminProducts, ...opts });
+export const useAdminCategories = () => useQuery({ queryKey: ["admin", "categories"], queryFn: listAdminCategories, ...opts });
 export const useAdminSettings = () => useQuery({ queryKey: ["admin", "settings"], queryFn: getAdminSettings, ...opts });
 
 /** État d'affichage d'une requête : chargement, erreur (autorisation / réseau / serveur), vide ou prêt. */

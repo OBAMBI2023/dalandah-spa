@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), toggle: vi.fn(), upload: vi.fn(), removeImg: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), toggle: vi.fn(), upload: vi.fn(), removeImg: vi.fn(), listCats: vi.fn(), createCat: vi.fn() }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (opts: Record<string, unknown>) => opts,
@@ -25,7 +25,14 @@ vi.mock("@/lib/admin-images", async (orig) => ({
   removeProductImage: mocks.removeImg,
 }));
 
+vi.mock("@/lib/admin-categories", async (orig) => ({
+  ...(await orig<typeof import("@/lib/admin-categories")>()),
+  listAdminCategories: mocks.listCats,
+  createAdminCategory: mocks.createCat,
+}));
+
 import { AdminError } from "@/lib/admin-api";
+import { CategoriesNotInstalledError } from "@/lib/admin-categories";
 import { CatalogueNotInstalledError, ProductActionError, type AdminProduct } from "@/lib/admin-products";
 import { Route } from "@/routes/admin.produits";
 
@@ -46,7 +53,11 @@ function show() {
 const fill = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const row = (name: string) => screen.getByText(name).closest("tr")!;
 
+const STATIC_CATS = ["Soins du visage", "Nettoyants", "Hydratation", "Sérums et soins ciblés", "Soins du corps", "Coffrets beauté", "Routines beauté"];
+
 beforeEach(() => {
+  mocks.listCats.mockReset().mockResolvedValue(STATIC_CATS);
+  mocks.createCat.mockReset().mockResolvedValue("Parfums d'ambiance");
   mocks.list.mockReset().mockResolvedValue([SAVON, MOUSSE, GEL]);
   mocks.create.mockReset().mockResolvedValue({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE" });
   mocks.update.mockReset().mockResolvedValue(undefined);
@@ -739,5 +750,267 @@ describe("photo dans le formulaire (pas de dialogue séparé)", () => {
     expect(await screen.findByText(/a été ajouté, mais sa photo n'a pas pu être enregistrée : Accès refusé/)).toBeInTheDocument();
     expect(mocks.create).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+});
+
+describe("création d'une catégorie depuis le formulaire produit", () => {
+  const openProductForm = async () => {
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    return screen.findByRole("button", { name: /Créer une catégorie/ });
+  };
+  const categoryDialog = () => screen.getByRole("dialog", { name: /Créer une catégorie/ });
+  const typeCategory = (value: string) => fireEvent.change(screen.getByLabelText(/Nom de la catégorie/), { target: { value } });
+  const select = () => screen.getByLabelText(/^Catégorie/) as HTMLSelectElement;
+  const optionsOf = (el: HTMLSelectElement) => [...el.options].map((o) => o.textContent);
+
+  it("action « Créer une catégorie » visible sous la liste déroulante, qui garde les catégories existantes", async () => {
+    const action = await openProductForm();
+    expect(action).toBeInTheDocument();
+    expect(optionsOf(select())).toEqual(["Choisir…", ...STATIC_CATS]);
+  });
+
+  it("migration non appliquée : l'action n'est pas proposée, la liste du code reste utilisable", async () => {
+    mocks.listCats.mockRejectedValue(new CategoriesNotInstalledError());
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByRole("button", { name: /Créer une catégorie/ })).not.toBeInTheDocument();
+    expect(optionsOf(select())).toEqual(["Choisir…", ...STATIC_CATS]);
+  });
+
+  it("migration non appliquée : aucun message d'erreur (ce n'est pas une panne), juste pas d'action de création", async () => {
+    mocks.listCats.mockRejectedValue(new CategoriesNotInstalledError());
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/n'ont pas pu être chargées/)).not.toBeInTheDocument();
+  });
+
+  it("erreur INATTENDUE (réseau) : signalée dans le formulaire avec « Réessayer », jamais masquée ; la réussite fait apparaître l'action", async () => {
+    mocks.listCats.mockRejectedValue(new AdminError("network", "Connexion impossible. Vérifiez votre réseau et réessayez."));
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    expect(await screen.findByText(/Les catégories enregistrées n'ont pas pu être chargées : Connexion impossible/)).toBeInTheDocument();
+    expect(screen.getByText(/La liste affichée peut être incomplète/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Créer une catégorie/ })).not.toBeInTheDocument();
+    expect(optionsOf(select())).toEqual(["Choisir…", ...STATIC_CATS]); // le formulaire reste utilisable
+
+    mocks.listCats.mockResolvedValue(STATIC_CATS);
+    fireEvent.click(screen.getByRole("button", { name: "Réessayer" }));
+    expect(await screen.findByRole("button", { name: /Créer une catégorie/ })).toBeInTheDocument();
+    expect(screen.queryByText(/n'ont pas pu être chargées/)).not.toBeInTheDocument();
+  });
+
+  it("erreur d'autorisation sur la liste : signalée aussi (message d'accès refusé)", async () => {
+    mocks.listCats.mockRejectedValue(new AdminError("forbidden", "Accès refusé."));
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    expect(await screen.findByText(/n'ont pas pu être chargées : Accès refusé\./)).toBeInTheDocument();
+  });
+
+  it("après application de la migration : rouvrir le formulaire suffit pour voir apparaître l'action, sans recharger la page", async () => {
+    mocks.listCats.mockRejectedValue(new CategoriesNotInstalledError());
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByRole("button", { name: /Créer une catégorie/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    mocks.listCats.mockResolvedValue(STATIC_CATS); // la migration vient d'être appliquée
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    expect(await screen.findByRole("button", { name: /Créer une catégorie/ })).toBeInTheDocument();
+  });
+
+  it("petite fenêtre : champ « Nom de la catégorie * », boutons Annuler et Créer la catégorie, pas de description", async () => {
+    fireEvent.click(await openProductForm());
+    const d = categoryDialog();
+    expect(within(d).getByLabelText("Nom de la catégorie *")).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: "Annuler" })).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: "Créer la catégorie" })).toBeInTheDocument();
+    expect(within(d).queryByLabelText(/Description/)).not.toBeInTheDocument();
+  });
+
+  it("annulation : la fenêtre se ferme, rien n'est créé et le brouillon du produit est intact", async () => {
+    const action = await openProductForm();
+    fill(/^Nom du produit/, "Brume d'oreiller");
+    fill(/^Catégorie/, "Hydratation");
+    fill(/^Prix de vente/, "4500");
+    fill(/^Description/, "Brouillon de description");
+    fireEvent.click(action);
+    typeCategory("Parfums");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Annuler" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Créer une catégorie/ })).not.toBeInTheDocument());
+    expect(mocks.createCat).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Ajouter un produit" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Nom du produit/)).toHaveValue("Brume d'oreiller");
+    expect(select()).toHaveValue("Hydratation");
+    expect(screen.getByLabelText(/^Prix de vente/)).toHaveValue("4500");
+    expect(screen.getByLabelText(/^Description/)).toHaveValue("Brouillon de description");
+    expect(mocks.create).not.toHaveBeenCalled();
+    // le nom saisi avant l'annulation n'est pas gardé pour la prochaine ouverture
+    fireEvent.click(screen.getByRole("button", { name: /Créer une catégorie/ }));
+    expect(screen.getByLabelText(/Nom de la catégorie/)).toHaveValue("");
+  });
+
+  it("création : nom normalisé envoyé, liste actualisée sans recharger, catégorie sélectionnée automatiquement, brouillon conservé, produit non créé", async () => {
+    mocks.listCats.mockResolvedValueOnce(STATIC_CATS).mockResolvedValue([...STATIC_CATS, "Parfums d'ambiance"]);
+    const action = await openProductForm();
+    fill(/^Nom du produit/, "Brume d'oreiller");
+    fill(/^Prix de vente/, "4500");
+    fireEvent.click(action);
+    typeCategory("  Parfums   d'ambiance ");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+
+    await waitFor(() => expect(mocks.createCat).toHaveBeenCalledTimes(1));
+    expect(mocks.createCat).toHaveBeenCalledWith("Parfums d'ambiance");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Créer une catégorie/ })).not.toBeInTheDocument());
+    await waitFor(() => expect(select()).toHaveValue("Parfums d'ambiance"));
+    expect(optionsOf(select())).toContain("Parfums d'ambiance");
+    expect(screen.getByLabelText(/^Nom du produit/)).toHaveValue("Brume d'oreiller");
+    expect(screen.getByLabelText(/^Prix de vente/)).toHaveValue("4500");
+    expect(mocks.create).not.toHaveBeenCalled(); // la validation de la petite fenêtre n'a pas envoyé le formulaire produit
+    await waitFor(() => expect(mocks.listCats).toHaveBeenCalledTimes(2)); // liste actualisée par invalidation
+  });
+
+  it("on peut poursuivre : le produit est créé dans la nouvelle catégorie", async () => {
+    const action = await openProductForm();
+    fireEvent.click(action);
+    typeCategory("Parfums d'ambiance");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+    await waitFor(() => expect(select()).toHaveValue("Parfums d'ambiance"));
+
+    fill(/^Nom du produit/, "Brume d'oreiller");
+    fill(/^Prix de vente/, "4500");
+    fireEvent.click(screen.getByRole("button", { name: "Créer le produit" }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    expect(mocks.create.mock.calls[0]![0]).toMatchObject({ name: "Brume d'oreiller", category: "Parfums d'ambiance", price: 4500 });
+  });
+
+  it("la nouvelle catégorie apparaît aussi dans le filtre de l'administration", async () => {
+    mocks.listCats.mockResolvedValueOnce(STATIC_CATS).mockResolvedValue([...STATIC_CATS, "Parfums d'ambiance"]);
+    const action = await openProductForm();
+    expect(optionsOf(screen.getByLabelText("Filtrer par catégorie") as HTMLSelectElement)).not.toContain("Parfums d'ambiance");
+    fireEvent.click(action);
+    typeCategory("Parfums d'ambiance");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+    await waitFor(() => expect(select()).toHaveValue("Parfums d'ambiance"));
+    await waitFor(() => expect(optionsOf(screen.getByLabelText("Filtrer par catégorie") as HTMLSelectElement)).toContain("Parfums d'ambiance"));
+  });
+
+  it("les catégories enregistrées en base (hors liste du code) sont proposées dans le formulaire et le filtre", async () => {
+    mocks.listCats.mockResolvedValue([...STATIC_CATS, "Accessoires", "Parfums"]);
+    await openProductForm();
+    expect(optionsOf(select())).toEqual(["Choisir…", ...STATIC_CATS, "Accessoires", "Parfums"]);
+    expect(optionsOf(screen.getByLabelText("Filtrer par catégorie") as HTMLSelectElement)).toEqual(["Toutes les catégories", ...STATIC_CATS, "Accessoires", "Parfums"]);
+  });
+
+  it("nom vide ou d'espaces seulement : refusé avant tout appel, message sous le champ", async () => {
+    fireEvent.click(await openProductForm());
+    for (const value of ["", "     "]) {
+      typeCategory(value);
+      fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+      expect(await within(categoryDialog()).findByText("Indiquez le nom de la catégorie.")).toBeInTheDocument();
+    }
+    expect(mocks.createCat).not.toHaveBeenCalled();
+  });
+
+  it("doublon connu (casse, espaces, accents) : refusé avant tout appel, avec le nom existant, le nom saisi est conservé", async () => {
+    fireEvent.click(await openProductForm());
+    for (const value of ["hydratation", "  HYDRATATION  ", "serums et soins ciblés"]) {
+      typeCategory(value);
+      fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+      expect(await within(categoryDialog()).findByText(/Une catégorie « .+ » existe déjà\./)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Nom de la catégorie/)).toHaveValue(value);
+    }
+    expect(mocks.createCat).not.toHaveBeenCalled();
+  });
+
+  it("doublon découvert par la base (créé entre-temps par un autre administrateur) : message de la base, nom conservé, aucune sélection", async () => {
+    mocks.createCat.mockRejectedValue(new ProductActionError("category_exists", "Cette catégorie existe déjà."));
+    fireEvent.click(await openProductForm());
+    typeCategory("Parfums");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+
+    expect(await within(categoryDialog()).findByText("Cette catégorie existe déjà.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Nom de la catégorie/)).toHaveValue("Parfums");
+    expect(select()).toHaveValue("");
+    expect(optionsOf(select())).not.toContain("Parfums");
+  });
+
+  it("échec réseau : message clair, nom conservé, jamais présentée comme créée, bouton de nouveau disponible", async () => {
+    mocks.createCat.mockRejectedValue(new AdminError("network", "Connexion impossible. Vérifiez votre réseau et réessayez."));
+    fireEvent.click(await openProductForm());
+    typeCategory("Parfums");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+
+    expect(await within(categoryDialog()).findByText("Connexion impossible. Vérifiez votre réseau et réessayez.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Nom de la catégorie/)).toHaveValue("Parfums");
+    expect(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" })).toBeEnabled();
+    expect(optionsOf(select())).not.toContain("Parfums");
+    expect(mocks.listCats).toHaveBeenCalledTimes(1); // aucun rechargement : rien n'a changé
+  });
+
+  it("droits insuffisants : message d'accès refusé, nom conservé", async () => {
+    mocks.createCat.mockRejectedValue(new AdminError("forbidden", "Accès refusé."));
+    fireEvent.click(await openProductForm());
+    typeCategory("Parfums");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+    expect(await within(categoryDialog()).findByText("Accès refusé.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Nom de la catégorie/)).toHaveValue("Parfums");
+  });
+
+  it("nom refusé par la base (invalid_input) : message de la base conservé", async () => {
+    mocks.createCat.mockRejectedValue(new ProductActionError("invalid_input", "Le nom de la catégorie doit contenir de 2 à 60 caractères."));
+    fireEvent.click(await openProductForm());
+    typeCategory("Parfums");
+    fireEvent.click(within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" }));
+    expect(await within(categoryDialog()).findByText(/de 2 à 60 caractères/)).toBeInTheDocument();
+  });
+
+  it("double clic : une seule création, bouton désactivé pendant l'envoi", async () => {
+    let done!: (v: string) => void;
+    mocks.createCat.mockReturnValue(new Promise<string>((r) => { done = r; }));
+    fireEvent.click(await openProductForm());
+    typeCategory("Parfums d'ambiance");
+    const submit = within(categoryDialog()).getByRole("button", { name: "Créer la catégorie" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect(await within(categoryDialog()).findByRole("button", { name: "Création…" })).toBeDisabled();
+    expect(mocks.createCat).toHaveBeenCalledTimes(1);
+    done("Parfums d'ambiance");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Créer une catégorie/ })).not.toBeInTheDocument());
+    expect(mocks.createCat).toHaveBeenCalledTimes(1);
+  });
+
+  it("touche Entrée dans la petite fenêtre : crée la catégorie, sans envoyer le formulaire produit", async () => {
+    const action = await openProductForm();
+    fill(/^Nom du produit/, "Brume d'oreiller");
+    fireEvent.click(action);
+    typeCategory("Parfums d'ambiance");
+    fireEvent.submit(screen.getByLabelText(/Nom de la catégorie/).closest("form")!);
+    await waitFor(() => expect(mocks.createCat).toHaveBeenCalledTimes(1));
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("modification d'un produit : la même action est disponible et la catégorie du produit reste sélectionnée", async () => {
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: "Modifier Savon Mélisse 2 en 1" }));
+    await screen.findByRole("dialog");
+    expect(await screen.findByRole("button", { name: /Créer une catégorie/ })).toBeInTheDocument();
+    expect(select()).toHaveValue("Nettoyants");
   });
 });
