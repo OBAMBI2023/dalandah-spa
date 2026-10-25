@@ -56,7 +56,7 @@ export function AppTabBar() {
     { to: "/", label: "Accueil", Icon: Home },
     { to: "/prestations", label: "Prestations", Icon: Sparkles },
     { to: "/rendez-vous", label: "Mes RDV", Icon: CalendarDays },
-    { to: "/offres", label: "Offres", Icon: Tag },
+    { to: "/promotions", label: "Promotions", Icon: Tag },
     { to: "/plus", label: "Plus", Icon: Menu },
   ] as const;
   return (

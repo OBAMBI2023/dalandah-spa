@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useState } from "react";
-import { LayoutDashboard, CalendarDays, Users, Sparkles, Package, Settings, Menu, ExternalLink } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Users, Sparkles, Package, Tag, Settings, Menu, ExternalLink } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LogoMark } from "@/components/app";
 import { SecurityBanner } from "@/components/admin";
@@ -17,6 +17,7 @@ const nav = [
   { to: "/admin/clients", label: "Clients", Icon: Users, exact: false },
   { to: "/admin/prestations", label: "Prestations", Icon: Sparkles, exact: false },
   { to: "/admin/produits", label: "Produits", Icon: Package, exact: false },
+  { to: "/admin/promotions", label: "Promotions", Icon: Tag, exact: false },
   { to: "/admin/parametres", label: "Paramètres", Icon: Settings, exact: false },
 ] as const;
 

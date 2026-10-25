@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createRouter, rootRouteId } from "@tanstack/react-router";
+import { createMemoryHistory, createRouter, rootRouteId } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { routeTree } from "@/routeTree.gen";
@@ -13,5 +13,21 @@ describe("App routing", () => {
     const matches = router.matchRoutes("/");
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
+  });
+});
+
+describe("Promotions (ex-« Offres »)", () => {
+  const router = (path: string) => createRouter({ routeTree, context: { queryClient: new QueryClient() }, history: createMemoryHistory({ initialEntries: [path] }) });
+
+  it("/promotions et /admin/promotions existent", () => {
+    for (const path of ["/promotions", "/admin/promotions"]) {
+      expect(router(path).matchRoutes(path).at(-1)?.routeId).not.toBe(rootRouteId);
+    }
+  });
+
+  it("l'ancienne adresse /offres est conservée et redirige vers /promotions", async () => {
+    const r = router("/offres");
+    await r.load();
+    expect(r.state.location.pathname).toBe("/promotions");
   });
 });

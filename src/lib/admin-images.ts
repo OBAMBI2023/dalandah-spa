@@ -191,3 +191,68 @@ export async function removeProductImage(productId: string, currentUrl: string |
   await setProductImage(productId, null);
   await deleteProductImageIfUnused(productId, currentUrl);
 }
+
+// --- Visuels des promotions (même bucket, dossier promotions/<id>/) ---
+
+/** Chemin d'objet unique pour une promotion : l'ancien visuel reste en place jusqu'au succès du remplacement. */
+export function newPromotionImagePath(promotionId: string, now = Date.now(), rand = Math.random().toString(36).slice(2, 8)) {
+  return `promotions/${promotionId}/${now}-${rand}.webp`;
+}
+
+/**
+ * Supprime l'ancien visuel, mais UNIQUEMENT s'il se trouve dans le dossier de cette promotion : une image de produit ou de prestation
+ * (ou d'une autre promotion) n'est jamais supprimée, même si la promotion en référence une par erreur.
+ */
+async function deletePromotionImageIfOwned(promotionId: string, oldUrl: string | null | undefined) {
+  const path = pathFromPublicUrl(oldUrl);
+  if (!path || !path.startsWith(`promotions/${promotionId}/`)) return;
+  await client().storage.from(IMAGE_BUCKET).remove([path]);
+}
+
+async function setPromotionImage(promotionId: string, url: string | null) {
+  const { data, error } = await client().from("promotions").update({ image_url: url }).eq("id", promotionId).select("id");
+  if (error) throw classify(error, "Enregistrement du visuel");
+  // Aucune ligne modifiée = la RLS a refusé (compte non autorisé) ou la promotion n'existe plus.
+  if (!data?.length) throw new AdminError("forbidden", "Accès refusé.");
+}
+
+/** Téléverse le visuel (réduit en WebP) puis l'enregistre sur la promotion. Ordre : envoi, base, suppression de l'ancien objet. */
+export async function uploadPromotionImage(promotionId: string, file: File, currentUrl: string | null): Promise<string> {
+  const invalid = validateImageFile(file);
+  if (invalid) throw new AdminError("server", invalid);
+  const c = client();
+
+  let blob: Blob;
+  try {
+    blob = await compressImage(file);
+  } catch {
+    throw new AdminError("server", "Cette image n'a pas pu être lue. Essayez un autre fichier.");
+  }
+  if (blob.size > MAX_IMAGE_BYTES) throw new AdminError("server", `Image trop lourde (${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)} Mo maximum après compression).`);
+
+  const path = newPromotionImagePath(promotionId);
+  let up: { error: { message?: string; statusCode?: string | number } | null };
+  try {
+    const r = await c.storage.from(IMAGE_BUCKET).upload(path, blob, { contentType: "image/webp", cacheControl: "31536000", upsert: false });
+    up = { error: r.error as { message?: string; statusCode?: string | number } | null };
+  } catch (e) {
+    throw storageError({ message: e instanceof Error ? e.message : "network" }, "Téléversement");
+  }
+  if (up.error) throw storageError(up.error, "Téléversement");
+
+  const url = c.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  try {
+    await setPromotionImage(promotionId, url);
+  } catch (e) {
+    await c.storage.from(IMAGE_BUCKET).remove([path]);
+    throw e;
+  }
+  await deletePromotionImageIfOwned(promotionId, currentUrl);
+  return url;
+}
+
+/** Retire le visuel d'une promotion : référence effacée d'abord, puis objet supprimé s'il appartient à cette promotion. */
+export async function removePromotionImage(promotionId: string, currentUrl: string | null): Promise<void> {
+  await setPromotionImage(promotionId, null);
+  await deletePromotionImageIfOwned(promotionId, currentUrl);
+}

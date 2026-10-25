@@ -30,6 +30,7 @@ vi.mock("@/components/cards", () => ({
 vi.mock("@/components/mobile-home", async (orig) => ({ ...(await orig<typeof import("@/components/mobile-home")>()) }));
 vi.mock("@/lib/shop-products", () => ({ useShopProducts: () => ({ products: [] }) }));
 vi.mock("@/lib/catalogue", () => ({ useCatalogue: () => h.catalogue }));
+vi.mock("@/lib/promotions", async (orig) => ({ ...(await orig<typeof import("@/lib/promotions")>()), usePromotions: () => ({ data: [] }) })); // les promotions ont leurs propres tests (public-promotions.test.tsx)
 vi.mock("sonner", () => ({ toast: vi.fn() }));
 
 import { defaultCategoryImage, serviceCategories, services as localServices, type Service } from "@/data/services";
@@ -190,7 +191,7 @@ describe("accueil mobile", () => {
     }
     expect(screen.getByRole("link", { name: "Sauna" })).toHaveAttribute("href", "/prestations?categorie=sauna");
     expect(screen.queryByRole("link", { name: "Vide" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Nos offres" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Nos promotions" })).toBeInTheDocument();
   });
 
   it("sans nouvelle catégorie : rien n'est ajouté", () => {

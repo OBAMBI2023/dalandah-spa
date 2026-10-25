@@ -20,6 +20,7 @@ import { Route as OffresRouteImport } from './routes/offres'
 import { Route as PanierRouteImport } from './routes/panier'
 import { Route as PlusRouteImport } from './routes/plus'
 import { Route as ProfilRouteImport } from './routes/profil'
+import { Route as PromotionsRouteImport } from './routes/promotions'
 import { Route as RendezVousRouteImport } from './routes/rendez-vous'
 import { Route as ReservationRouteImport } from './routes/reservation'
 import { Route as SoinsRouteImport } from './routes/soins'
@@ -28,6 +29,7 @@ import { Route as AdminClientsRouteImport } from './routes/admin.clients'
 import { Route as AdminParametresRouteImport } from './routes/admin.parametres'
 import { Route as AdminPrestationsRouteImport } from './routes/admin.prestations'
 import { Route as AdminProduitsRouteImport } from './routes/admin.produits'
+import { Route as AdminPromotionsRouteImport } from './routes/admin.promotions'
 import { Route as AdminReservationsRouteImport } from './routes/admin.reservations'
 import { Route as BoutiqueProductIdRouteImport } from './routes/boutique.$productId'
 import { Route as PrestationsIndexRouteImport } from './routes/prestations.index'
@@ -88,6 +90,11 @@ const ProfilRoute = ProfilRouteImport.update({
   path: '/profil',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PromotionsRoute = PromotionsRouteImport.update({
+  id: '/promotions',
+  path: '/promotions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RendezVousRoute = RendezVousRouteImport.update({
   id: '/rendez-vous',
   path: '/rendez-vous',
@@ -128,6 +135,11 @@ const AdminProduitsRoute = AdminProduitsRouteImport.update({
   path: '/produits',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPromotionsRoute = AdminPromotionsRouteImport.update({
+  id: '/promotions',
+  path: '/promotions',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminReservationsRoute = AdminReservationsRouteImport.update({
   id: '/reservations',
   path: '/reservations',
@@ -161,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/panier': typeof PanierRoute
   '/plus': typeof PlusRoute
   '/profil': typeof ProfilRoute
+  '/promotions': typeof PromotionsRoute
   '/rendez-vous': typeof RendezVousRoute
   '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
@@ -168,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
   '/admin/produits': typeof AdminProduitsRoute
+  '/admin/promotions': typeof AdminPromotionsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -185,6 +199,7 @@ export interface FileRoutesByTo {
   '/panier': typeof PanierRoute
   '/plus': typeof PlusRoute
   '/profil': typeof ProfilRoute
+  '/promotions': typeof PromotionsRoute
   '/rendez-vous': typeof RendezVousRoute
   '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
@@ -192,6 +207,7 @@ export interface FileRoutesByTo {
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
   '/admin/produits': typeof AdminProduitsRoute
+  '/admin/promotions': typeof AdminPromotionsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -211,6 +227,7 @@ export interface FileRoutesById {
   '/panier': typeof PanierRoute
   '/plus': typeof PlusRoute
   '/profil': typeof ProfilRoute
+  '/promotions': typeof PromotionsRoute
   '/rendez-vous': typeof RendezVousRoute
   '/reservation': typeof ReservationRoute
   '/soins': typeof SoinsRoute
@@ -218,6 +235,7 @@ export interface FileRoutesById {
   '/admin/parametres': typeof AdminParametresRoute
   '/admin/prestations': typeof AdminPrestationsRoute
   '/admin/produits': typeof AdminProduitsRoute
+  '/admin/promotions': typeof AdminPromotionsRoute
   '/admin/reservations': typeof AdminReservationsRoute
   '/boutique/$productId': typeof BoutiqueProductIdRoute
   '/prestations/$serviceId': typeof PrestationsServiceIdRoute
@@ -238,6 +256,7 @@ export interface FileRouteTypes {
     | '/panier'
     | '/plus'
     | '/profil'
+    | '/promotions'
     | '/rendez-vous'
     | '/reservation'
     | '/soins'
@@ -245,6 +264,7 @@ export interface FileRouteTypes {
     | '/admin/parametres'
     | '/admin/prestations'
     | '/admin/produits'
+    | '/admin/promotions'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -262,6 +282,7 @@ export interface FileRouteTypes {
     | '/panier'
     | '/plus'
     | '/profil'
+    | '/promotions'
     | '/rendez-vous'
     | '/reservation'
     | '/soins'
@@ -269,6 +290,7 @@ export interface FileRouteTypes {
     | '/admin/parametres'
     | '/admin/prestations'
     | '/admin/produits'
+    | '/admin/promotions'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -287,6 +309,7 @@ export interface FileRouteTypes {
     | '/panier'
     | '/plus'
     | '/profil'
+    | '/promotions'
     | '/rendez-vous'
     | '/reservation'
     | '/soins'
@@ -294,6 +317,7 @@ export interface FileRouteTypes {
     | '/admin/parametres'
     | '/admin/prestations'
     | '/admin/produits'
+    | '/admin/promotions'
     | '/admin/reservations'
     | '/boutique/$productId'
     | '/prestations/$serviceId'
@@ -313,6 +337,7 @@ export interface RootRouteChildren {
   PanierRoute: typeof PanierRoute
   PlusRoute: typeof PlusRoute
   ProfilRoute: typeof ProfilRoute
+  PromotionsRoute: typeof PromotionsRoute
   RendezVousRoute: typeof RendezVousRoute
   ReservationRoute: typeof ReservationRoute
   SoinsRoute: typeof SoinsRoute
@@ -399,6 +424,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfilRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/promotions': {
+      id: '/promotions'
+      path: '/promotions'
+      fullPath: '/promotions'
+      preLoaderRoute: typeof PromotionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rendez-vous': {
       id: '/rendez-vous'
       path: '/rendez-vous'
@@ -455,6 +487,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProduitsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/promotions': {
+      id: '/admin/promotions'
+      path: '/promotions'
+      fullPath: '/admin/promotions'
+      preLoaderRoute: typeof AdminPromotionsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/reservations': {
       id: '/admin/reservations'
       path: '/reservations'
@@ -491,6 +530,7 @@ interface AdminRouteChildren {
   AdminParametresRoute: typeof AdminParametresRoute
   AdminPrestationsRoute: typeof AdminPrestationsRoute
   AdminProduitsRoute: typeof AdminProduitsRoute
+  AdminPromotionsRoute: typeof AdminPromotionsRoute
   AdminReservationsRoute: typeof AdminReservationsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -500,6 +540,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminParametresRoute: AdminParametresRoute,
   AdminPrestationsRoute: AdminPrestationsRoute,
   AdminProduitsRoute: AdminProduitsRoute,
+  AdminPromotionsRoute: AdminPromotionsRoute,
   AdminReservationsRoute: AdminReservationsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
@@ -530,6 +571,7 @@ const rootRouteChildren: RootRouteChildren = {
   PanierRoute: PanierRoute,
   PlusRoute: PlusRoute,
   ProfilRoute: ProfilRoute,
+  PromotionsRoute: PromotionsRoute,
   RendezVousRoute: RendezVousRoute,
   ReservationRoute: ReservationRoute,
   SoinsRoute: SoinsRoute,
