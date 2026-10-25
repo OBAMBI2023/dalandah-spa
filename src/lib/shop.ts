@@ -18,6 +18,14 @@ export type ShopRow = {
   usage_tips: string | null; volume: string | null; image_url: string | null; sale_price: number; stock_qty: number;
 };
 
+/** Début de la description, pour la carte d'un produit sans résumé. */
+const excerpt = (text: string, max = 110) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = /\s/.test(t.charAt(max)) ? t.slice(0, max) : t.slice(0, max).replace(/\s+\S*$/, "");
+  return `${cut.trimEnd()}…`;
+};
+
 /** Produit de la base -> produit de la boutique. Disponible = en stock (les produits inactifs ne sont jamais renvoyés). */
 export function toShopProduct(r: ShopRow): Product {
   // Photo téléversée en priorité ; sinon les images du code portant le même identifiant (image par défaut).
@@ -25,7 +33,7 @@ export function toShopProduct(r: ShopRow): Product {
   const product: Product = {
     id: r.id, name: r.name, category: r.category, price: r.sale_price,
     images: r.image_url ? [r.image_url] : (local?.images ?? []),
-    shortDescription: r.short_description, description: r.description, features: r.features ?? [],
+    shortDescription: r.short_description || excerpt(r.description), description: r.description, features: r.features ?? [],
     available: r.stock_qty > 0, stock: r.stock_qty, seo: `${r.name} Dalanda Cosmétique`,
   };
   if (r.usage_tips) product.usage = r.usage_tips;

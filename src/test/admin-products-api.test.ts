@@ -41,7 +41,7 @@ vi.mock("@/lib/images", () => ({ compressImage: async () => new Blob([new Uint8A
 import { AdminError } from "@/lib/admin-api";
 import {
   CatalogueNotInstalledError, ProductActionError, createAdminProduct, emptyProductForm, formToInput, isAvailable, isLowStock, listAdminProducts,
-  productFormSchema, productStats, productToForm, setProductActive, setProductImage, slugify, updateAdminProduct, type AdminProduct, type ProductInput,
+  createProductAuto, findCreated, nextId, nextSku, skuBase, withSuffix, productToInput, productFormSchema, productStats, productToForm, setProductActive, setProductImage, slugify, updateAdminProduct, type AdminProduct, type ProductInput,
 } from "@/lib/admin-products";
 import { newProductImagePath, removeProductImage, uploadProductImage } from "@/lib/admin-images";
 
@@ -262,7 +262,7 @@ describe("disponibilité et statistiques", () => {
 });
 
 describe("formulaire : identifiant et validation", () => {
-  const valid = { ...emptyProductForm, name: "Savon Mélisse", sku: "dal-sav-1", category: "Nettoyants", price: "6 000", initialQty: "10" };
+  const valid = { ...emptyProductForm, name: "Savon Mélisse", category: "Nettoyants", price: "6 000", initialQty: "10" };
   const issues = (v: Partial<typeof valid>) => {
     const r = productFormSchema.safeParse({ ...valid, ...v });
     return r.success ? [] : r.error.issues.map((i) => i.path.join(".") + ": " + i.message);
@@ -274,33 +274,226 @@ describe("formulaire : identifiant et validation", () => {
     expect(slugify("é".repeat(100)).length).toBeLessThanOrEqual(60);
     expect(slugify("!!")).toBe("");
   });
-  it("accepte une saisie valide (référence en minuscules, espaces de milliers)", () => {
+  it("accepte une saisie valide (espaces de milliers tolérés) ; le formulaire n'a plus ni référence ni résumé ni caractéristiques", () => {
     expect(issues({})).toEqual([]);
-    expect(formToInput(productFormSchema.parse(valid))).toMatchObject({ sku: "DAL-SAV-1", price: 6000, costPrice: null, active: true });
+    expect(formToInput(productFormSchema.parse(valid))).toMatchObject({ price: 6000, costPrice: null, active: true, sku: "", features: [], usageTips: null, volume: null });
+    expect(Object.keys(productFormSchema.shape).sort()).toEqual(["active", "category", "costPrice", "description", "initialQty", "lowStockThreshold", "name", "price"]);
   });
-  it("champs obligatoires et limites de la base", () => {
+  it("champs obligatoires et limites de la base : nom, catégorie, prix, stock initial", () => {
     expect(issues({ name: "A" })).toEqual(expect.arrayContaining([expect.stringMatching(/^name/)]));
-    expect(issues({ sku: "x y" })).toEqual(expect.arrayContaining([expect.stringMatching(/^sku/)]));
     expect(issues({ category: "" })).toEqual(expect.arrayContaining([expect.stringMatching(/^category/)]));
     expect(issues({ price: "" })).toEqual(expect.arrayContaining([expect.stringMatching(/^price/)]));
     expect(issues({ price: "-5" })).toEqual(expect.arrayContaining([expect.stringMatching(/^price/)]));
     expect(issues({ price: "12,5" })).toEqual(expect.arrayContaining([expect.stringMatching(/^price/)]));
+    expect(issues({ price: "abc" })).toEqual(expect.arrayContaining([expect.stringMatching(/^price/)]));
     expect(issues({ price: "100000001" })).toEqual(expect.arrayContaining([expect.stringMatching(/^price.*maximum/)]));
+    expect(issues({ initialQty: "" })).toEqual(expect.arrayContaining([expect.stringMatching(/^initialQty/)]));
+    expect(issues({ initialQty: "-1" })).toEqual(expect.arrayContaining([expect.stringMatching(/^initialQty/)]));
+    expect(issues({ initialQty: "2,5" })).toEqual(expect.arrayContaining([expect.stringMatching(/^initialQty/)]));
     expect(issues({ initialQty: "1000001" })).toEqual(expect.arrayContaining([expect.stringMatching(/^initialQty/)]));
     expect(issues({ costPrice: "abc" })).toEqual(expect.arrayContaining([expect.stringMatching(/^costPrice/)]));
+    expect(issues({ lowStockThreshold: "-2" })).toEqual(expect.arrayContaining([expect.stringMatching(/^lowStockThreshold/)]));
     expect(issues({ description: "x".repeat(2001) })).toEqual(expect.arrayContaining([expect.stringMatching(/^description/)]));
-    expect(issues({ features: Array(21).fill("a").join("\n") })).toEqual(expect.arrayContaining([expect.stringMatching(/^features/)]));
   });
-  it("stock initial 0 accepté (produit en rupture) ; coût vide = coût inconnu (null)", () => {
+  it("stock initial 0 accepté ; coût vide = coût inconnu (null) ; seuil vide = 0", () => {
     expect(issues({ initialQty: "0" })).toEqual([]);
     expect(formToInput(productFormSchema.parse({ ...valid, costPrice: "" })).costPrice).toBeNull();
     expect(formToInput(productFormSchema.parse({ ...valid, costPrice: "0" })).costPrice).toBe(0);
+    expect(issues({ lowStockThreshold: "" })).toEqual([]);
+    expect(formToInput(productFormSchema.parse({ ...valid, lowStockThreshold: "" })).lowStockThreshold).toBe(0);
+    expect(formToInput(productFormSchema.parse({ ...valid, lowStockThreshold: "3" })).lowStockThreshold).toBe(3);
   });
+
+  const existing: AdminProduct = { id: "p", sku: "DAL-OLD-1", name: "N", category: "C", shortDescription: "Résumé conservé", description: "d", features: ["a", "b"], usageTips: "Matin",
+    volume: "50 ml", imageUrl: "https://x/y.webp", price: 100, costPrice: null, stock: 7, lowStockThreshold: 2, active: false, isDemo: false, createdAt: "", updatedAt: "" };
+
   it("modification : le formulaire reprend la fiche, sans stock ni photo", () => {
-    const form = productToForm({ id: "p", sku: "S-1", name: "N", category: "C", shortDescription: "", description: "", features: ["a", "b"], usageTips: null, volume: null,
-      imageUrl: "https://x/y.webp", price: 100, costPrice: null, stock: 7, lowStockThreshold: 2, active: false, isDemo: false, createdAt: "", updatedAt: "" });
-    expect(form).toMatchObject({ features: "a\nb", costPrice: "", price: "100", active: false });
+    const form = productToForm(existing);
+    expect(form).toMatchObject({ costPrice: "", price: "100", active: false, description: "d" });
     expect(form).not.toHaveProperty("imageUrl");
-    expect(formToInput(form)).not.toHaveProperty("imageUrl");
+    expect(formToInput(form, productToInput(existing))).not.toHaveProperty("imageUrl");
+  });
+  it("modification : référence, résumé, caractéristiques, contenance et conseils (retirés du formulaire) sont renvoyés tels quels, jamais effacés", async () => {
+    h.state.replies["admin_update_product"] = ok({ ok: true, id: "p" });
+    const input = formToInput(productToForm({ ...existing, name: "Nouveau nom" }), productToInput(existing));
+    await updateAdminProduct("p", input);
+    expect(h.state.calls[0]!.args).toMatchObject({
+      p_sku: "DAL-OLD-1", p_short: "Résumé conservé", p_features: ["a", "b"], p_usage: "Matin", p_volume: "50 ml", p_threshold: 2, p_active: false,
+    });
+  });
+});
+
+describe("référence produit générée", () => {
+  it("règle : préfixe DAL-, majuscules, sans accents ni caractères spéciaux, espaces en tirets", () => {
+    expect(skuBase("Gel douche")).toBe("DAL-GEL-DOUCHE");
+    expect(skuBase("Huile Caviar")).toBe("DAL-HUILE-CAVIAR");
+    expect(skuBase("Savon cristal")).toBe("DAL-SAVON-CRISTAL");
+    expect(skuBase("Savon Mélisse 2 en 1")).toBe("DAL-SAVON-MELISSE-2-EN-1");
+    expect(skuBase("  Crème   à l'huile d'argan !! ")).toBe("DAL-CREME-A-L-HUILE-D-ARGAN");
+    expect(skuBase("Été & Soleil")).toBe("DAL-ETE-SOLEIL");
+  });
+  it("nom vide ou sans lettre ni chiffre : aucune référence (« Générée après saisie du nom »)", () => {
+    expect(skuBase("")).toBe("");
+    expect(skuBase("   ")).toBe("");
+    expect(skuBase("!!! ???")).toBe("");
+    expect(nextSku("", ["DAL-A"])).toBe("");
+  });
+  it("toujours conforme à la contrainte de la base, même pour un très long nom (la base est raccourcie, jamais le suffixe)", () => {
+    const re = /^[A-Z0-9][A-Z0-9._-]{1,39}$/;
+    const long = "Huile de soin nourrissante pour le corps et le visage aux extraits naturels";
+    expect(re.test(skuBase(long).slice(0, 40))).toBe(true);
+    expect(nextSku(long, []).length).toBeLessThanOrEqual(40);
+    const taken = [nextSku(long, [])];
+    const second = nextSku(long, taken);
+    expect(second).not.toBe(taken[0]);
+    expect(second.length).toBeLessThanOrEqual(40);
+    expect(second.endsWith("-2")).toBe(true);
+    expect(re.test(second)).toBe(true);
+    expect(withSuffix("DAL-" + "A".repeat(60), 12, 40)).toBe("DAL-" + "A".repeat(33) + "-12");
+    expect(withSuffix("DAL-ABC-", 1, 40)).toBe("DAL-ABC");
+  });
+  it("doublon : -2, puis -3 (comparaison sans tenir compte de la casse) ; une référence existante n'est jamais reprise", () => {
+    expect(nextSku("Savon cristal", [])).toBe("DAL-SAVON-CRISTAL");
+    expect(nextSku("Savon cristal", ["DAL-SAVON-CRISTAL"])).toBe("DAL-SAVON-CRISTAL-2");
+    expect(nextSku("Savon cristal", ["dal-savon-cristal", "DAL-SAVON-CRISTAL-2"])).toBe("DAL-SAVON-CRISTAL-3");
+    expect(nextSku("Savon cristal", ["DAL-SAV-CRI"])).toBe("DAL-SAVON-CRISTAL"); // une référence existante différente ne gêne pas
+  });
+  it("adresse du produit : même principe pour deux noms identiques", () => {
+    expect(nextId("Gel douche", [])).toBe("gel-douche");
+    expect(nextId("Gel douche", ["gel-douche"])).toBe("gel-douche-2");
+    expect(nextId("Gel douche", ["gel-douche", "gel-douche-2"])).toBe("gel-douche-3");
+    expect(nextId("!", [])).toBe("");
+  });
+});
+
+describe("création avec référence générée : createProductAuto", () => {
+  const base = { ...input, name: "Gel douche", initialQty: 5 };
+  const none = { ids: [] as string[], skus: [] as string[] };
+  const created = () => h.state.calls.filter((c) => c.fn === "admin_create_product");
+
+  it("nom simple : envoie l'adresse et la référence générées, sans photo, et rend l'une et l'autre", async () => {
+    h.state.replies["admin_create_product"] = ok({ ok: true });
+    const r = await createProductAuto(base, none);
+    expect(r).toEqual({ id: "gel-douche", sku: "DAL-GEL-DOUCHE" });
+    expect(created()).toHaveLength(1);
+    expect(created()[0]!.args).toMatchObject({ p_id: "gel-douche", p_sku: "DAL-GEL-DOUCHE", p_name: "Gel douche", p_initial_qty: 5, p_image_url: null });
+  });
+  it("nom avec accents", async () => {
+    h.state.replies["admin_create_product"] = ok({ ok: true });
+    const r = await createProductAuto({ ...base, name: "Savon Mélisse 2 en 1" }, none);
+    expect(r).toEqual({ id: "savon-melisse-2-en-1", sku: "DAL-SAVON-MELISSE-2-EN-1" });
+  });
+  it("deux produits au même nom : la 2ᵉ création reçoit -2 d'après la liste déjà chargée", async () => {
+    h.state.replies["admin_create_product"] = ok({ ok: true });
+    const r = await createProductAuto(base, { ids: ["gel-douche"], skus: ["DAL-GEL-DOUCHE"] });
+    expect(r).toEqual({ id: "gel-douche-2", sku: "DAL-GEL-DOUCHE-2" });
+  });
+  it("doublon créé en même temps par un autre administrateur : la base refuse (sku_taken), on retente avec -2 sans rien écrire en double", async () => {
+    let n = 0;
+    h.state.replies["admin_create_product"] = () => (++n === 1 ? ok({ ok: false, code: "sku_taken", error: "Cette référence existe déjà." }) : ok({ ok: true }));
+    const r = await createProductAuto(base, none);
+    expect(created().map((c) => c.args!["p_sku"])).toEqual(["DAL-GEL-DOUCHE", "DAL-GEL-DOUCHE-2"]);
+    expect(created().map((c) => c.args!["p_id"])).toEqual(["gel-douche", "gel-douche"]);
+    expect(r.sku).toBe("DAL-GEL-DOUCHE-2");
+  });
+  it("adresse déjà prise en parallèle (id_taken) : -2 sur l'adresse seulement, la référence reste libre", async () => {
+    let n = 0;
+    h.state.replies["admin_create_product"] = () => (++n === 1 ? ok({ ok: false, code: "id_taken", error: "Un produit porte déjà cet identifiant." }) : ok({ ok: true }));
+    const r = await createProductAuto(base, none);
+    expect(r).toEqual({ id: "gel-douche-2", sku: "DAL-GEL-DOUCHE" });
+  });
+  it("plusieurs conflits successifs : -2, -3, -4 puis succès", async () => {
+    let n = 0;
+    h.state.replies["admin_create_product"] = () => (++n < 4 ? ok({ ok: false, code: "sku_taken", error: "Cette référence existe déjà." }) : ok({ ok: true }));
+    const r = await createProductAuto(base, none);
+    expect(created().map((c) => c.args!["p_sku"])).toEqual(["DAL-GEL-DOUCHE", "DAL-GEL-DOUCHE-2", "DAL-GEL-DOUCHE-3", "DAL-GEL-DOUCHE-4"]);
+    expect(r.sku).toBe("DAL-GEL-DOUCHE-4");
+  });
+  it("conflits sans fin : abandon après 25 tentatives avec un message clair", async () => {
+    h.state.replies["admin_create_product"] = ok({ ok: false, code: "sku_taken", error: "Cette référence existe déjà." });
+    await expect(createProductAuto(base, none)).rejects.toMatchObject({ reason: "sku_taken", message: expect.stringMatching(/Impossible de générer une référence unique/) });
+    expect(created()).toHaveLength(25);
+  });
+  it("échec réseau : aucune nouvelle tentative, erreur « network »", async () => {
+    h.state.replies["admin_create_product"] = () => { throw new TypeError("Failed to fetch"); };
+    await expect(createProductAuto(base, none)).rejects.toMatchObject({ code: "network" });
+    expect(created()).toHaveLength(1);
+  });
+  it("refus d'autorisation : aucune nouvelle tentative", async () => {
+    h.state.replies["admin_create_product"] = { data: null, error: { code: "42501", message: "réservé aux administrateurs" } };
+    await expect(createProductAuto(base, none)).rejects.toMatchObject({ code: "forbidden" });
+    expect(created()).toHaveLength(1);
+  });
+  it("erreur de validation de la base (prix invalide) : renvoyée telle quelle, sans nouvelle tentative", async () => {
+    h.state.replies["admin_create_product"] = ok({ ok: false, code: "invalid_input", error: "Prix de vente invalide." });
+    await expect(createProductAuto(base, none)).rejects.toMatchObject({ reason: "invalid_input", message: "Prix de vente invalide." });
+    expect(created()).toHaveLength(1);
+  });
+  it("chaque essai est signalé avant son envoi, et seule la valeur en conflit change d'un essai à l'autre (jamais une valeur déjà refusée)", async () => {
+    const seen: { id: string; sku: string }[] = [];
+    const replies = [
+      ok({ ok: false, code: "sku_taken", error: "Cette référence existe déjà." }),
+      ok({ ok: false, code: "id_taken", error: "Un produit porte déjà cet identifiant." }),
+      ok({ ok: false, code: "sku_taken", error: "Cette référence existe déjà." }),
+      ok({ ok: true }),
+    ];
+    h.state.replies["admin_create_product"] = () => replies.shift()!;
+    const r = await createProductAuto(base, none, { onAttempt: (a) => seen.push(a) });
+    expect(seen).toEqual([
+      { id: "gel-douche", sku: "DAL-GEL-DOUCHE" },
+      { id: "gel-douche", sku: "DAL-GEL-DOUCHE-2" },   // sku_taken : la référence change, l'adresse n'était pas en cause
+      { id: "gel-douche-2", sku: "DAL-GEL-DOUCHE-2" }, // id_taken : l'adresse change
+      { id: "gel-douche-2", sku: "DAL-GEL-DOUCHE-3" }, // sku_taken : la référence change encore
+    ]);
+    expect(new Set(seen.map((a) => a.id + "|" + a.sku)).size).toBe(seen.length); // aucun essai rejoué à l'identique
+    expect(r).toEqual({ id: "gel-douche-2", sku: "DAL-GEL-DOUCHE-3" });
+  });
+  it("réseau coupé : l'essai en cours est signalé (réponse peut-être perdue) mais jamais rejoué", async () => {
+    const seen: { id: string; sku: string }[] = [];
+    h.state.replies["admin_create_product"] = () => { throw new TypeError("Failed to fetch"); };
+    await expect(createProductAuto(base, none, { onAttempt: (a) => seen.push(a) })).rejects.toMatchObject({ code: "network" });
+    expect(seen).toEqual([{ id: "gel-douche", sku: "DAL-GEL-DOUCHE" }]);
+    expect(created()).toHaveLength(1);
+  });
+  it("longueurs respectées à chaque essai, suffixe compris (adresse ≤ 60, référence ≤ 40)", async () => {
+    const longName = "Huile de soin nourrissante pour le corps et le visage aux extraits naturels et bio";
+    const seen: { id: string; sku: string }[] = [];
+    let n = 0;
+    h.state.replies["admin_create_product"] = () => (++n < 12 ? ok({ ok: false, code: n % 2 ? "sku_taken" : "id_taken", error: "x" }) : ok({ ok: true }));
+    await createProductAuto({ ...base, name: longName }, none, { onAttempt: (a) => seen.push(a) });
+    expect(seen.length).toBe(12);
+    for (const a of seen) {
+      expect(a.sku.length).toBeLessThanOrEqual(40);
+      expect(a.id.length).toBeLessThanOrEqual(60);
+      expect(a.sku).toMatch(/^[A-Z0-9][A-Z0-9._-]{1,39}$/);
+      expect(a.id).toMatch(/^[a-z0-9-]{2,60}$/);
+    }
+  });
+  it("erreur de la base autre que l'unicité (id_taken/sku_taken) : jamais de nouvelle tentative", async () => {
+    for (const reply of [
+      ok({ ok: false, code: "invalid_input", error: "Prix de vente invalide." }),
+      ok({ ok: false, code: "not_found", error: "x" }),
+      ok({ ok: false, code: "autre", error: "x" }),
+      { data: null, error: { code: "42501", message: "réservé aux administrateurs" } },
+      { data: null, error: { code: "PGRST202", message: "Could not find the function" } },
+      { data: null, error: { code: "XX000", message: "boom" } },
+    ]) {
+      h.state.calls = [];
+      h.state.replies["admin_create_product"] = reply;
+      await expect(createProductAuto(base, none)).rejects.toBeInstanceOf(AdminError);
+      expect(created()).toHaveLength(1);
+    }
+  });
+  it("findCreated : adopte seulement CE produit (même adresse, même référence, même nom)", () => {
+    const list = [{ id: "gel-douche", sku: "DAL-GEL-DOUCHE", name: "Gel douche" }];
+    expect(findCreated(list, { id: "gel-douche", sku: "DAL-GEL-DOUCHE" }, " Gel douche ")).toBe(list[0]);
+    expect(findCreated(list, { id: "gel-douche", sku: "DAL-GEL-DOUCHE-2" }, "Gel douche")).toBeNull();
+    expect(findCreated(list, { id: "gel-douche-2", sku: "DAL-GEL-DOUCHE" }, "Gel douche")).toBeNull();
+    expect(findCreated(list, { id: "gel-douche", sku: "DAL-GEL-DOUCHE" }, "Autre nom")).toBeNull();
+    expect(findCreated([], { id: "gel-douche", sku: "DAL-GEL-DOUCHE" }, "Gel douche")).toBeNull();
+  });
+  it("nom inutilisable : refusé avant tout appel", async () => {
+    await expect(createProductAuto({ ...base, name: "!!" }, none)).rejects.toMatchObject({ reason: "invalid_input" });
+    expect(h.state.calls).toHaveLength(0);
   });
 });

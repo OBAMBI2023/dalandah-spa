@@ -156,7 +156,6 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "");
 }
 
-const SKU = /^[A-Z0-9][A-Z0-9._-]{1,39}$/;
 export const squeeze = (s: string) => s.replace(/[\s\u00a0\u202f]/g, "");
 
 /** Entier positif saisi en texte (les espaces de milliers sont tolérés) ; chaîne vide permise si `optional`. */
@@ -169,47 +168,127 @@ function whole(label: string, max: number, optional = false) {
   });
 }
 
-const featureLines = (raw: string) => raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
 export const productFormSchema = z.object({
   name: z.string().trim().min(PRODUCT_LIMITS.name.min, "Indiquez le nom du produit (2 caractères minimum).").max(PRODUCT_LIMITS.name.max, "Nom trop long (120 caractères maximum)."),
-  sku: z.string().trim().refine((v) => SKU.test(v.toUpperCase()), "Référence invalide : lettres, chiffres, . _ - (2 à 40 caractères)."),
   category: z.string().trim().min(PRODUCT_LIMITS.category.min, "Choisissez une catégorie.").max(PRODUCT_LIMITS.category.max, "Catégorie trop longue."),
-  shortDescription: z.string().max(PRODUCT_LIMITS.short, "Résumé trop long (300 caractères maximum)."),
   description: z.string().max(PRODUCT_LIMITS.description, "Description trop longue (2 000 caractères maximum)."),
-  features: z.string().superRefine((raw, ctx) => {
-    const lines = featureLines(raw);
-    if (lines.length > PRODUCT_LIMITS.features.count) ctx.addIssue({ code: "custom", message: "20 caractéristiques au maximum." });
-    else if (lines.some((l) => l.length > PRODUCT_LIMITS.features.length)) ctx.addIssue({ code: "custom", message: "Une caractéristique dépasse 200 caractères." });
-  }),
-  usageTips: z.string().max(PRODUCT_LIMITS.usage, "Conseils trop longs (1 000 caractères maximum)."),
-  volume: z.string().max(PRODUCT_LIMITS.volume, "Contenance trop longue (60 caractères maximum)."),
   price: whole("Prix de vente", PRODUCT_LIMITS.price),
   costPrice: whole("Coût d'achat", PRODUCT_LIMITS.price, true),
-  lowStockThreshold: whole("Seuil d'alerte", PRODUCT_LIMITS.threshold),
+  lowStockThreshold: whole("Seuil d'alerte", PRODUCT_LIMITS.threshold, true),
   initialQty: whole("Stock initial", PRODUCT_LIMITS.stock),
   active: z.boolean(),
 });
 export type ProductFormValues = z.infer<typeof productFormSchema>;
 
 export const emptyProductForm: ProductFormValues = {
-  name: "", sku: "", category: "", shortDescription: "", description: "", features: "", usageTips: "", volume: "",
-  price: "", costPrice: "", lowStockThreshold: "0", initialQty: "0", active: true,
+  name: "", category: "", description: "", price: "", costPrice: "", lowStockThreshold: "0", initialQty: "0", active: true,
 };
 
 export const productToForm = (p: AdminProduct): ProductFormValues => ({
-  name: p.name, sku: p.sku, category: p.category, shortDescription: p.shortDescription, description: p.description,
-  features: p.features.join("\n"), usageTips: p.usageTips ?? "", volume: p.volume ?? "",
+  name: p.name, category: p.category, description: p.description,
   price: String(p.price), costPrice: p.costPrice === null ? "" : String(p.costPrice), lowStockThreshold: String(p.lowStockThreshold),
   initialQty: "0", active: p.active, // le stock existant n'est pas un champ du formulaire de modification
 });
 
-/** Valeurs du formulaire (déjà validées) -> arguments des fonctions. Un coût vide devient « coût inconnu ». */
-export function formToInput(v: ProductFormValues): ProductInput {
+/** Champs que le formulaire ne montre plus : conservés tels quels (jamais effacés) à la modification, vides à la création. */
+export type ProductBase = Pick<ProductInput, "sku" | "shortDescription" | "features" | "usageTips" | "volume">;
+export const emptyBase: ProductBase = { sku: "", shortDescription: "", features: [], usageTips: null, volume: null };
+
+/**
+ * Valeurs du formulaire (déjà validées) -> arguments des fonctions. Un coût vide devient « coût inconnu », un seuil vide vaut 0.
+ * `base` fournit la référence et les champs non affichés : la fiche existante en modification, `emptyBase` à la création.
+ */
+export function formToInput(v: ProductFormValues, base: ProductBase = emptyBase): ProductInput {
   return {
-    sku: v.sku.trim().toUpperCase(), name: v.name.trim(), category: v.category.trim(), shortDescription: v.shortDescription,
-    description: v.description, features: featureLines(v.features), usageTips: v.usageTips.trim() || null, volume: v.volume.trim() || null,
+    sku: base.sku, shortDescription: base.shortDescription, features: base.features, usageTips: base.usageTips, volume: base.volume,
+    name: v.name.trim(), category: v.category.trim(), description: v.description,
     price: Number(squeeze(v.price)), costPrice: squeeze(v.costPrice) === "" ? null : Number(squeeze(v.costPrice)),
-    lowStockThreshold: Number(squeeze(v.lowStockThreshold)), active: v.active,
+    lowStockThreshold: squeeze(v.lowStockThreshold) === "" ? 0 : Number(squeeze(v.lowStockThreshold)), active: v.active,
   };
+}
+
+// --- Référence produit générée ---
+
+const SKU_MAX = 40; // contrainte de la base : ^[A-Z0-9][A-Z0-9._-]{1,39}$
+const ID_MAX = 60;  // contrainte de la base : ^[a-z0-9-]{2,60}$
+
+/** Référence lisible tirée du nom : préfixe DAL-, majuscules, sans accents ni caractères spéciaux, espaces en tirets. Vide si le nom ne donne rien. */
+export function skuBase(name: string): string {
+  const body = name.normalize("NFD").replace(/\p{Diacritic}/gu, "").toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return body ? `DAL-${body}` : "";
+}
+
+/** base, base-2, base-3… sans dépasser `max` caractères : c'est la base qui est raccourcie, jamais le suffixe. */
+export function withSuffix(base: string, n: number, max: number): string {
+  if (n <= 1) return base.slice(0, max).replace(/-+$/g, "");
+  const suffix = `-${n}`;
+  return base.slice(0, max - suffix.length).replace(/-+$/g, "") + suffix;
+}
+
+function firstFree(base: string, max: number, taken: Set<string>, fold: (s: string) => string): string {
+  for (let n = 1; n < 1000; n++) {
+    const v = withSuffix(base, n, max);
+    if (!taken.has(fold(v))) return v;
+  }
+  throw new ProductActionError("invalid_input", "Impossible de générer une référence unique.");
+}
+const upper = (s: string) => s.toUpperCase();
+const lower = (s: string) => s.toLowerCase();
+
+/** Première référence libre pour ce nom, d'après les références déjà connues ("" tant que le nom est vide). */
+export function nextSku(name: string, existing: readonly string[]): string {
+  const base = skuBase(name);
+  return base ? firstFree(base, SKU_MAX, new Set(existing.map(upper)), upper) : "";
+}
+/** Premier identifiant d'adresse libre pour ce nom ("" si le nom ne donne pas 2 caractères valides). */
+export function nextId(name: string, existing: readonly string[]): string {
+  const base = slugify(name);
+  return base.length >= 2 ? firstFree(base, ID_MAX, new Set(existing.map(lower)), lower) : "";
+}
+
+/** Un essai de création : l'adresse et la référence envoyées. */
+export type CreateAttempt = { id: string; sku: string };
+
+const MAX_ATTEMPTS = 25;
+
+/**
+ * Crée un produit dont la référence et l'adresse sont générées. Les listes déjà chargées donnent le premier choix, mais c'est la base qui
+ * tranche : ses contraintes d'unicité (`products_sku_key`, clé primaire) rejettent atomiquement un doublon, même créé à la même seconde
+ * par un autre administrateur. En cas de `sku_taken` ou `id_taken`, on passe à la variante suivante (-2, -3…) et on recommence ;
+ * un refus de ce type n'écrit rien (la fonction SQL rend la main avant le coût et le mouvement de stock). Seule la valeur en conflit change
+ * d'un essai à l'autre, et une valeur refusée n'est jamais rejouée. Toute autre erreur (réseau, droits, validation) est renvoyée telle quelle,
+ * sans nouvelle tentative. `onAttempt` signale chaque essai juste avant son envoi : si la réponse se perd, l'appelant sait quel essai a pu aboutir.
+ */
+export async function createProductAuto(
+  input: ProductInput & { initialQty: number },
+  existing: { ids: readonly string[]; skus: readonly string[] },
+  opts: { onAttempt?: (attempt: CreateAttempt) => void } = {},
+): Promise<{ id: string; sku: string }> {
+  const skuRoot = skuBase(input.name);
+  const idRoot = slugify(input.name);
+  if (!skuRoot || idRoot.length < 2) throw new ProductActionError("invalid_input", "Le nom doit contenir au moins 2 lettres ou chiffres.");
+  const takenSkus = new Set(existing.skus.map(upper));
+  const takenIds = new Set(existing.ids.map(lower));
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const sku = firstFree(skuRoot, SKU_MAX, takenSkus, upper);
+    const id = firstFree(idRoot, ID_MAX, takenIds, lower);
+    try {
+      opts.onAttempt?.({ id, sku });
+      await createAdminProduct({ ...input, sku, id });
+      return { id, sku };
+    } catch (e) {
+      if (e instanceof ProductActionError && e.reason === "sku_taken") takenSkus.add(upper(sku));
+      else if (e instanceof ProductActionError && e.reason === "id_taken") takenIds.add(lower(id));
+      else throw e;
+    }
+  }
+  throw new ProductActionError("sku_taken", "Impossible de générer une référence unique pour ce produit. Réessayez dans un instant.");
+}
+
+/**
+ * Un essai de création dont la réponse s'est perdue a-t-il finalement abouti ? Oui si le catalogue relu contient CE produit (même adresse,
+ * même référence, même nom). On l'adopte alors au lieu d'en créer un second.
+ */
+export function findCreated(products: readonly Pick<AdminProduct, "id" | "sku" | "name">[], attempt: CreateAttempt, name: string) {
+  return products.find((p) => p.id === attempt.id && p.sku.toUpperCase() === attempt.sku.toUpperCase() && p.name === name.trim()) ?? null;
 }

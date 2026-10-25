@@ -85,6 +85,20 @@ describe("conversion d'une ligne de la base en produit de boutique", () => {
     expect(toShopProduct(row({ id: "produit-sans-image" })).images).toEqual([]);
   });
 
+  it("sans résumé (champ retiré du formulaire), la carte reprend le début de la description, coupé proprement", () => {
+    expect(toShopProduct(row({ short_description: "Résumé saisi", description: "Texte long".repeat(40) })).shortDescription).toBe("Résumé saisi");
+    expect(toShopProduct(row({ short_description: "", description: "Une crème légère." })).shortDescription).toBe("Une crème légère.");
+    expect(toShopProduct(row({ short_description: "", description: "" })).shortDescription).toBe("");
+    const long = toShopProduct(row({ short_description: "", description: "mot ".repeat(60) })).shortDescription;
+    expect(long.endsWith("mot…")).toBe(true);
+    expect(long.length).toBeLessThanOrEqual(111);
+    // coupure pile en fin de mot : le dernier mot entier est conservé
+    const exact = "a".repeat(100) + " " + "b".repeat(9) + " suite du texte";
+    expect(toShopProduct(row({ short_description: "", description: exact })).shortDescription).toBe("a".repeat(100) + " " + "b".repeat(9) + "…");
+    // un seul mot interminable : coupé net, sans planter
+    expect(toShopProduct(row({ short_description: "", description: "x".repeat(300) })).shortDescription).toBe("x".repeat(110) + "…");
+  });
+
   it("catégorie libre acceptée, aucune donnée interne exposée dans l'objet", () => {
     const p = toShopProduct(row({ category: "Catégorie inédite" }));
     expect(p.category).toBe("Catégorie inédite");

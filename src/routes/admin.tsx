@@ -44,7 +44,7 @@ function SideFooter() {
 function AdminLayout() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[16rem_1fr]">
+    <div className="admin-shell min-h-screen bg-background lg:grid lg:grid-cols-[16rem_1fr]">
       <aside className="sticky top-0 hidden h-screen flex-col border-r bg-card px-4 py-6 lg:flex">
         <div className="px-2"><LogoMark /></div>
         <p className="mt-2 text-center text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Administration</p>

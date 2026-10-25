@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), toggle: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), toggle: vi.fn(), upload: vi.fn(), removeImg: vi.fn() }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (opts: Record<string, unknown>) => opts,
@@ -14,9 +14,15 @@ vi.mock("@/components/app", () => ({
 vi.mock("@/lib/admin-products", async (orig) => ({
   ...(await orig<typeof import("@/lib/admin-products")>()),
   listAdminProducts: mocks.list,
-  createAdminProduct: mocks.create,
+  createProductAuto: mocks.create,
   updateAdminProduct: mocks.update,
   setProductActive: mocks.toggle,
+}));
+
+vi.mock("@/lib/admin-images", async (orig) => ({
+  ...(await orig<typeof import("@/lib/admin-images")>()),
+  uploadProductImage: mocks.upload,
+  removeProductImage: mocks.removeImg,
 }));
 
 import { AdminError } from "@/lib/admin-api";
@@ -42,9 +48,11 @@ const row = (name: string) => screen.getByText(name).closest("tr")!;
 
 beforeEach(() => {
   mocks.list.mockReset().mockResolvedValue([SAVON, MOUSSE, GEL]);
-  mocks.create.mockReset().mockResolvedValue("x");
+  mocks.create.mockReset().mockResolvedValue({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE" });
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.toggle.mockReset().mockResolvedValue(undefined);
+  mocks.upload.mockReset().mockResolvedValue("https://x/new.webp");
+  mocks.removeImg.mockReset().mockResolvedValue(undefined);
 });
 afterEach(cleanup);
 
@@ -91,19 +99,43 @@ describe("liste des produits", () => {
     expect(screen.queryByText("Gel douche")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Filtrer par catégorie"), { target: { value: "all" } });
 
-    fireEvent.change(screen.getByLabelText("Filtrer par statut"), { target: { value: "inactive" } });
+    fireEvent.click(screen.getByRole("tab", { name: /Inactifs/ }));
     expect(screen.getByText("Gel douche")).toBeInTheDocument();
     expect(screen.queryByText("Savon Mélisse 2 en 1")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Filtrer par statut"), { target: { value: "active" } });
+    fireEvent.click(screen.getByRole("tab", { name: /Actifs/ }));
     expect(screen.queryByText("Gel douche")).not.toBeInTheDocument();
     expect(screen.getByText("Mousse nettoyante")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Actifs/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("aucun résultat de recherche : message dédié", async () => {
+  it("onglets de statut : effectifs réels (tous, actifs, inactifs)", async () => {
     show();
     await screen.findByText("Savon Mélisse 2 en 1");
+    expect(screen.getByRole("tab", { name: "Tous 3" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Actifs 2" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Inactifs 1" })).toBeInTheDocument();
+  });
+
+  it("la référence est affichée sous le nom, le coût inconnu dans sa propre colonne", async () => {
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    const savon = within(row("Savon Mélisse 2 en 1"));
+    expect(savon.getByText("DAL-SAV-MEL")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Coût d'achat" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Référence/ })).not.toBeInTheDocument();
+  });
+
+  it("aucun résultat de recherche : message dédié et réinitialisation des filtres", async () => {
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("tab", { name: /Inactifs/ }));
     fireEvent.change(screen.getByLabelText("Rechercher un produit"), { target: { value: "zzz" } });
     expect(screen.getByText("Aucun résultat")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Réinitialiser les filtres" }));
+    expect(screen.getByLabelText("Rechercher un produit")).toHaveValue("");
+    expect(screen.getByRole("tab", { name: /Tous/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Savon Mélisse 2 en 1")).toBeInTheDocument();
   });
 
   it("chargement : squelette, aucune statistique affichée", () => {
@@ -117,6 +149,7 @@ describe("liste des produits", () => {
     mocks.list.mockResolvedValue([]);
     show();
     expect(await screen.findByText("Aucun produit")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Ajouter un produit/ })).toHaveLength(2); // en-tête + invitation de l'état vide
     const stats = within(screen.getByLabelText("Statistiques du catalogue"));
     expect(stats.getAllByText("0")).toHaveLength(3);
   });
@@ -156,85 +189,266 @@ describe("ajout d'un produit", () => {
   };
   const fillValid = () => {
     fill(/^Nom/, "Crème Hydratante");
-    fill(/^Référence/, "dal-cre-hyd");
     fill(/^Catégorie/, "Hydratation");
     fill(/^Prix de vente/, "7 500");
     fill(/^Stock initial/, "0");
   };
+  const submitName = "Créer le produit";
 
-  it("formulaire vide : erreurs de validation, aucun appel à la base", async () => {
+  it("formulaire simplifié : titre, sous-titre, sections Photo / Informations / Prix et stock, boutons Annuler et Créer le produit", async () => {
+    const d = await open();
+    expect(within(d).getByRole("heading", { name: "Ajouter un produit" })).toBeInTheDocument();
+    expect(within(d).getByText("Renseignez les informations essentielles de votre produit.")).toBeInTheDocument();
+    expect(within(d).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Photo", "Informations", "Prix et stock", "Visibilité"]);
+    expect(within(d).getByRole("button", { name: "Annuler" })).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: submitName })).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: "Ajouter une photo" })).toBeInTheDocument();
+  });
+
+  it("champs retirés : plus de résumé, caractéristiques, contenance ni conseils d'utilisation", async () => {
     await open();
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
+    for (const label of [/Résumé/, /Caractéristiques/, /Contenance/, /Conseils/]) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Nom du produit \*/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Description/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Coût d'achat/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Seuil d'alerte/)).toBeInTheDocument();
+  });
+
+  it("référence : non saisissable, « Générée après saisie du nom » tant que le nom est vide", async () => {
+    await open();
+    const ref = screen.getByLabelText("Référence produit");
+    expect(ref).toHaveAttribute("readonly");
+    expect(ref).toHaveValue("");
+    expect(ref).toHaveAttribute("placeholder", "Générée après saisie du nom");
+    expect(screen.getByText("Générée automatiquement à partir du nom du produit.")).toBeInTheDocument();
+    fireEvent.change(ref, { target: { value: "SAISIE-MANUELLE" } });
+    expect(ref).toHaveValue("");
+  });
+
+  it("référence : se met à jour à chaque modification du nom (accents, espaces, caractères spéciaux)", async () => {
+    await open();
+    const ref = screen.getByLabelText("Référence produit");
+    fill(/^Nom/, "Crème Hydratante");
+    expect(ref).toHaveValue("DAL-CREME-HYDRATANTE");
+    fill(/^Nom/, "Savon Mélisse 2 en 1");
+    expect(ref).toHaveValue("DAL-SAVON-MELISSE-2-EN-1");
+    fill(/^Nom/, "Huile d'argan & karité !");
+    expect(ref).toHaveValue("DAL-HUILE-D-ARGAN-KARITE");
+    fill(/^Nom/, "");
+    expect(ref).toHaveValue("");
+  });
+
+  it("référence déjà utilisée : variante -2 proposée et expliquée", async () => {
+    mocks.list.mockResolvedValue([SAVON, product({ id: "gel-douche", sku: "DAL-GEL-DOUCHE", name: "Gel douche" })]);
+    await open();
+    fill(/^Nom/, "Gel douche");
+    expect(screen.getByLabelText("Référence produit")).toHaveValue("DAL-GEL-DOUCHE-2");
+    expect(screen.getByText(/Variante attribuée : « DAL-GEL-DOUCHE » existe déjà/)).toBeInTheDocument();
+  });
+
+  it("formulaire vide : erreurs sous les champs concernés, aucun appel à la base, aucune erreur de référence", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
 
     expect(await screen.findByText(/Indiquez le nom du produit/)).toBeInTheDocument();
-    expect(screen.getByText(/Référence invalide/)).toBeInTheDocument();
     expect(screen.getByText("Choisissez une catégorie.")).toBeInTheDocument();
     expect(screen.getByText("Prix de vente : indiquez une valeur.")).toBeInTheDocument();
+    expect(screen.queryByText(/Référence invalide/)).not.toBeInTheDocument();
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("valeurs hors limites : prix négatif, décimal ou trop grand refusés", async () => {
+  it("prix négatif, décimal, non numérique ou trop grand : refusés", async () => {
     await open();
     fillValid();
-    fill(/^Prix de vente/, "-5");
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
-    expect(await screen.findByText(/Prix de vente : nombre entier positif/)).toBeInTheDocument();
-    fill(/^Prix de vente/, "999999999");
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
-    expect(await screen.findByText(/Prix de vente : 100 000 000 au maximum/)).toBeInTheDocument();
+    for (const [value, expected] of [["-5", /nombre entier positif/], ["12,5", /nombre entier positif/], ["abc", /nombre entier positif/], ["999999999", /100 000 000 au maximum/]] as const) {
+      fill(/^Prix de vente/, value);
+      fireEvent.click(screen.getByRole("button", { name: submitName }));
+      expect(await screen.findByText(expected, { selector: "p[role=alert]" })).toBeInTheDocument();
+    }
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("création : identifiant tiré du nom, stock initial 0 accepté, liste rechargée, message de réussite", async () => {
+  it("stock initial invalide (vide, négatif, décimal) : refusé ; 0 est accepté", async () => {
     await open();
     fillValid();
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
+    for (const value of ["", "-1", "2,5", "abc"]) {
+      fill(/^Stock initial/, value);
+      fireEvent.click(screen.getByRole("button", { name: submitName }));
+      expect(await screen.findByText(/Stock initial : /, { selector: "p[role=alert]" })).toBeInTheDocument();
+    }
+    expect(mocks.create).not.toHaveBeenCalled();
+    fill(/^Stock initial/, "0");
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+  });
+
+  it("création : valeurs envoyées, références existantes transmises pour éviter les doublons, liste rechargée, confirmation avec la référence", async () => {
+    await open();
+    fillValid();
+    fill(/^Coût d'achat/, "3 000");
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
 
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
-      id: "creme-hydratante", sku: "DAL-CRE-HYD", name: "Crème Hydratante", category: "Hydratation", price: 7500, costPrice: null, initialQty: 0, active: true,
-    }));
-    expect(await screen.findByText(/« Crème Hydratante » a été ajouté au catalogue/)).toBeInTheDocument();
+    const [input, existing] = mocks.create.mock.calls[0]!;
+    expect(input).toMatchObject({ name: "Crème Hydratante", category: "Hydratation", price: 7500, costPrice: 3000, initialQty: 0, lowStockThreshold: 0, active: true, shortDescription: "", features: [], usageTips: null, volume: null });
+    expect(existing).toEqual({ ids: ["savon-melisse-2en1", "mousse-nettoyante", "gel-douche"], skus: ["DAL-SAV-MEL", "DAL-MOU-NET", "DAL-GEL-DOU"] });
+    expect(await screen.findByText(/« Crème Hydratante » a été ajouté au catalogue \(référence DAL-CREME-HYDRATANTE\)/)).toBeInTheDocument();
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2)); // invalidation après mutation
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("erreur métier de la base (référence déjà prise) : message exact sous le champ, formulaire conservé", async () => {
-    mocks.create.mockRejectedValue(new ProductActionError("sku_taken", "Cette référence existe déjà."));
+  it("coût d'achat vide : reste inconnu (null), jamais inventé", async () => {
     await open();
     fillValid();
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
-
-    expect(await screen.findByText("Cette référence existe déjà.")).toBeInTheDocument();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Nom/)).toHaveValue("Crème Hydratante");
-    expect(mocks.list).toHaveBeenCalledTimes(1); // pas de rechargement : rien n'a changé
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.create.mock.calls[0]![0]).toMatchObject({ costPrice: null });
   });
 
-  it("autre erreur (refus d'autorisation) : message affiché dans le formulaire, jamais un succès", async () => {
+  it("nom modifié avant l'enregistrement : c'est le dernier nom qui est envoyé", async () => {
+    await open();
+    fillValid();
+    fill(/^Nom/, "Brouillon");
+    fill(/^Nom/, "Sérum Éclat");
+    expect(screen.getByLabelText("Référence produit")).toHaveValue("DAL-SERUM-ECLAT");
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    expect(mocks.create.mock.calls[0]![0]).toMatchObject({ name: "Sérum Éclat" });
+  });
+
+  it("interrupteur « Produit actif » : actif par défaut, description claire, désactivable", async () => {
+    await open();
+    const sw = screen.getByRole("switch", { name: /Produit actif/ });
+    expect(sw).toBeChecked();
+    expect(screen.getByText("Visible dans la boutique lorsqu'il est disponible en stock.")).toBeInTheDocument();
+    fillValid();
+    fireEvent.click(sw);
+    expect(sw).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.create.mock.calls[0]![0]).toMatchObject({ active: false });
+  });
+
+  it("échec réseau pendant la création : message clair, formulaire conservé, bouton de nouveau disponible, rien de rechargé", async () => {
+    mocks.create.mockRejectedValue(new AdminError("network", "Connexion impossible. Vérifiez votre réseau et réessayez."));
+    await open();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+
+    expect(await screen.findByText("Connexion impossible. Vérifiez votre réseau et réessayez.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Nom/)).toHaveValue("Crème Hydratante");
+    expect(screen.getByRole("button", { name: submitName })).toBeEnabled();
+    expect(screen.queryByText(/a été ajouté/)).not.toBeInTheDocument();
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("refus d'autorisation : message affiché dans le formulaire, jamais un succès", async () => {
     mocks.create.mockRejectedValue(new AdminError("forbidden", "Accès refusé."));
     await open();
     fillValid();
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter le produit" }));
-
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
     expect(await screen.findByText("Accès refusé.")).toBeInTheDocument();
     expect(screen.queryByText(/a été ajouté/)).not.toBeInTheDocument();
   });
 
-  it("double clic : une seule création, bouton désactivé pendant l'envoi", async () => {
-    let done!: (v: string) => void;
-    mocks.create.mockReturnValue(new Promise<string>((r) => { done = r; }));
+  const lost = (id = "creme-hydratante", sku = "DAL-CREME-HYDRATANTE") => async (_input: unknown, _existing: unknown, opts?: { onAttempt?: (a: { id: string; sku: string }) => void }) => {
+    opts?.onAttempt?.({ id, sku }); // l'essai part…
+    throw new AdminError("network", "Connexion impossible. Vérifiez votre réseau et réessayez."); // … mais la réponse ne revient jamais
+  };
+
+  it("réponse perdue puis nouvelle validation : si le produit a bien été créé, il est ADOPTÉ (aucune seconde création), la confirmation indique sa référence", async () => {
+    mocks.create.mockReset().mockImplementationOnce(lost());
     await open();
     fillValid();
-    const submit = screen.getByRole("button", { name: "Ajouter le produit" });
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    expect(await screen.findByText("Connexion impossible. Vérifiez votre réseau et réessayez.")).toBeInTheDocument();
+    expect(mocks.list).toHaveBeenCalledTimes(1); // pas de relecture tant qu'aucun essai n'a échoué
+
+    // le serveur avait en réalité enregistré le produit : la relecture le montre
+    mocks.list.mockResolvedValueOnce([SAVON, product({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE", name: "Crème Hydratante" })]);
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+
+    expect(await screen.findByText(/« Crème Hydratante » a été ajouté au catalogue \(référence DAL-CREME-HYDRATANTE\)/)).toBeInTheDocument();
+    expect(mocks.create).toHaveBeenCalledTimes(1); // jamais de deuxième produit
+  });
+
+  it("réponse perdue, mais produit absent à la relecture : nouvelle création avec la liste à jour", async () => {
+    mocks.create.mockReset().mockImplementationOnce(lost()).mockResolvedValueOnce({ id: "creme-hydratante-2", sku: "DAL-CREME-HYDRATANTE-2" });
+    await open();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await screen.findByText("Connexion impossible. Vérifiez votre réseau et réessayez.");
+
+    mocks.list.mockResolvedValueOnce([SAVON, product({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE", name: "Une autre crème" })]); // un autre produit a pris cette adresse
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+    expect(mocks.create.mock.calls[1]![1]).toEqual({ ids: ["savon-melisse-2en1", "creme-hydratante"], skus: ["DAL-SAV-MEL", "DAL-CREME-HYDRATANTE"] });
+    expect(await screen.findByText(/référence DAL-CREME-HYDRATANTE-2/)).toBeInTheDocument();
+  });
+
+  it("réponse perdue puis relecture impossible : rien n'est créé, l'erreur est affichée (mieux vaut un échec qu'un doublon)", async () => {
+    mocks.create.mockReset().mockImplementationOnce(lost());
+    await open();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await screen.findByText("Connexion impossible. Vérifiez votre réseau et réessayez.");
+
+    mocks.list.mockRejectedValueOnce(new AdminError("network", "Connexion impossible. Vérifiez votre réseau et réessayez."));
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: submitName })).toBeEnabled();
+  });
+
+  it("refus de validation (aucune écriture) puis correction : nouvelle création normale", async () => {
+    mocks.create.mockReset()
+      .mockRejectedValueOnce(new ProductActionError("invalid_input", "Prix de vente invalide."))
+      .mockResolvedValueOnce({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE" });
+    await open();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await screen.findByText("Prix de vente invalide.");
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/a été ajouté au catalogue/)).toBeInTheDocument();
+  });
+
+  it("référence impossible à rendre unique : message de la base conservé, formulaire ouvert", async () => {
+    mocks.create.mockRejectedValue(new ProductActionError("sku_taken", "Impossible de générer une référence unique pour ce produit. Réessayez dans un instant."));
+    await open();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    expect(await screen.findByText(/Impossible de générer une référence unique/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("double clic : une seule création, bouton désactivé pendant l'envoi", async () => {
+    let done!: (v: { id: string; sku: string }) => void;
+    mocks.create.mockReturnValue(new Promise<{ id: string; sku: string }>((r) => { done = r; }));
+    await open();
+    fillValid();
+    const submit = screen.getByRole("button", { name: submitName });
     fireEvent.click(submit);
     fireEvent.click(submit);
 
-    expect(await screen.findByRole("button", { name: "Enregistrement…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Création…" })).toBeDisabled();
     expect(mocks.create).toHaveBeenCalledTimes(1);
-    done("x");
+    done({ id: "creme-hydratante", sku: "DAL-CREME-HYDRATANTE" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("création sans photo : aucun envoi d'image ; l'image par défaut reste affichée", async () => {
+    await open();
+    fillValid();
+    expect(screen.getByText("Aucune photo : l'image par défaut est affichée.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: submitName }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.removeImg).not.toHaveBeenCalled();
   });
 });
 
@@ -246,10 +460,32 @@ describe("modification d'un produit", () => {
     return screen.findByRole("dialog");
   };
 
+  it("référence permanente : affichée en lecture seule, elle ne suit pas le nom modifié et n'est pas renvoyée modifiée", async () => {
+    await openEdit();
+    const ref = screen.getByLabelText("Référence produit");
+    expect(ref).toHaveValue("DAL-SAV-MEL");
+    expect(ref).toHaveAttribute("readonly");
+    expect(screen.getByText("Permanente : elle ne change plus après la création.")).toBeInTheDocument();
+    fill(/^Nom/, "Un tout autre nom");
+    expect(ref).toHaveValue("DAL-SAV-MEL");
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.update.mock.calls[0]![1]).toMatchObject({ sku: "DAL-SAV-MEL", name: "Un tout autre nom" });
+  });
+
+  it("champs retirés du formulaire mais conservés : résumé, caractéristiques, contenance et conseils sont renvoyés tels quels", async () => {
+    mocks.list.mockResolvedValue([product({ shortDescription: "Résumé d'origine", features: ["A", "B"], usageTips: "Matin et soir", volume: "200 ml" })]);
+    await openEdit();
+    for (const label of [/Résumé/, /Caractéristiques/, /Contenance/, /Conseils/]) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.update.mock.calls[0]![1]).toMatchObject({ shortDescription: "Résumé d'origine", features: ["A", "B"], usageTips: "Matin et soir", volume: "200 ml" });
+  });
+
   it("formulaire prérempli ; stock en lecture seule avec explication ; pas de champ « stock initial »", async () => {
     await openEdit();
     expect(screen.getByLabelText(/^Nom/)).toHaveValue("Savon Mélisse 2 en 1");
-    expect(screen.getByLabelText(/^Référence/)).toHaveValue("DAL-SAV-MEL");
+    expect(screen.getByLabelText("Référence produit")).toHaveValue("DAL-SAV-MEL");
     expect(screen.getByLabelText("Stock actuel")).toHaveValue("20");
     expect(screen.getByLabelText("Stock actuel")).toHaveAttribute("readonly");
     expect(screen.getByText(/Le stock n'est pas modifiable ici/)).toBeInTheDocument();
@@ -347,14 +583,161 @@ describe("désactivation et réactivation (jamais de suppression)", () => {
   });
 });
 
-describe("photo depuis la liste", () => {
-  it("chaque produit a un bouton Photo ; le dialogue montre la photo actuelle et propose de la remplacer", async () => {
+describe("photo dans le formulaire (pas de dialogue séparé)", () => {
+  const photo = (name = "p.jpg", type = "image/jpeg") => new File([new Uint8Array(2000)], name, { type });
+  const choose = (f: File) => fireEvent.change(screen.getByLabelText("Choisir une photo"), { target: { files: [f] } });
+  const openEdit = async (name: string) => {
+    show();
+    await screen.findByText(name);
+    fireEvent.click(screen.getByRole("button", { name: `Modifier ${name}` }));
+    await screen.findByRole("dialog");
+  };
+
+  beforeEach(() => { vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:apercu"), revokeObjectURL: vi.fn() })); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("plus de bouton photo séparé dans la liste : la photo se gère dans « Modifier »", async () => {
     show();
     await screen.findByText("Savon Mélisse 2 en 1");
-    fireEvent.click(screen.getByRole("button", { name: "Photo de Savon Mélisse 2 en 1" }));
+    expect(screen.queryByRole("button", { name: /^Photo de / })).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole("button", { name: "Remplacer la photo" })).toBeInTheDocument();
-    expect(screen.getByAltText("Aperçu : Savon Mélisse 2 en 1")).toHaveAttribute("src", SAVON.imageUrl);
-    expect(screen.getByRole("button", { name: "Supprimer la photo" })).toBeInTheDocument();
+  it("produit avec photo : aperçu de la photo actuelle, « Remplacer » et « Retirer » dans le modal", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    expect(screen.getByAltText(/Aperçu de la photo/)).toHaveAttribute("src", SAVON.imageUrl);
+    expect(screen.getByText("Photo actuelle du produit.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remplacer la photo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retirer la photo" })).toBeInTheDocument();
+  });
+
+  it("produit sans photo : « Ajouter une photo », pas de bouton Retirer", async () => {
+    await openEdit("Mousse nettoyante");
+    expect(screen.getByRole("button", { name: "Ajouter une photo" })).toBeInTheDocument();
+    expect(screen.getByText(/Aucune photo : l'image par défaut/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retirer la photo" })).not.toBeInTheDocument();
+  });
+
+  it("modification sans toucher à la photo : ni envoi ni suppression (la photo n'est jamais effacée par une simple modification)", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    fill(/^Prix de vente/, "6500");
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(1));
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.removeImg).not.toHaveBeenCalled();
+  });
+
+  it("nouvelle photo : aperçu immédiat, rien d'envoyé avant « Enregistrer », puis fiche PUIS photo", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    const f = photo();
+    choose(f);
+    expect(screen.getByAltText(/Aperçu de la photo/)).toHaveAttribute("src", "blob:apercu");
+    expect(screen.getByText(/Nouvelle photo : elle sera enregistrée avec le produit/)).toBeInTheDocument();
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
+    expect(mocks.upload).toHaveBeenCalledWith("savon-melisse-2en1", f, SAVON.imageUrl);
+    expect(mocks.update.mock.invocationCallOrder[0]).toBeLessThan(mocks.upload.mock.invocationCallOrder[0]!);
+    expect(await screen.findByText(/« Savon Mélisse 2 en 1 » a été modifié/)).toBeInTheDocument();
+  });
+
+  it("« Annuler le changement » abandonne la photo choisie : rien n'est envoyé", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    choose(photo());
+    fireEvent.click(screen.getByRole("button", { name: "Annuler le changement" }));
+    expect(screen.getByAltText(/Aperçu de la photo/)).toHaveAttribute("src", SAVON.imageUrl);
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("retirer la photo : marqué dans le formulaire, effectif seulement à l'enregistrement (après la fiche)", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: "Retirer la photo" }));
+    expect(screen.getByText("La photo sera retirée à l'enregistrement.")).toBeInTheDocument();
+    expect(mocks.removeImg).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.removeImg).toHaveBeenCalledWith("savon-melisse-2en1", SAVON.imageUrl));
+    expect(mocks.update.mock.invocationCallOrder[0]).toBeLessThan(mocks.removeImg.mock.invocationCallOrder[0]!);
+  });
+
+  it("retrait annulable avant l'enregistrement : la photo est conservée", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: "Retirer la photo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Annuler le retrait" }));
+    expect(screen.getByText("Photo actuelle du produit.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.removeImg).not.toHaveBeenCalled();
+  });
+
+  it("format refusé : message clair, aucune photo en attente", async () => {
+    await openEdit("Savon Mélisse 2 en 1");
+    choose(photo("doc.pdf", "application/pdf"));
+    expect(await screen.findByText(/JPEG, PNG ou WebP/, { selector: "p[role=alert]" })).toBeInTheDocument();
+    expect(screen.getByText("Photo actuelle du produit.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("la fiche échoue : la photo n'est pas envoyée", async () => {
+    mocks.update.mockRejectedValue(new ProductActionError("invalid_input", "Prix de vente invalide."));
+    await openEdit("Savon Mélisse 2 en 1");
+    choose(photo());
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(await screen.findByText("Prix de vente invalide.")).toBeInTheDocument();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("la photo échoue après une fiche enregistrée : le modal reste ouvert avec un message précis", async () => {
+    mocks.upload.mockRejectedValue(new Error("Image trop lourde pour le serveur (5 Mo maximum)."));
+    await openEdit("Savon Mélisse 2 en 1");
+    choose(photo());
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(await screen.findByText(/Les informations sont enregistrées, mais la photo ne l'est pas : Image trop lourde/)).toBeInTheDocument();
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText(/a été modifié/)).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2)); // la fiche enregistrée est rechargée
+  });
+
+  it("création avec photo : le produit est créé, puis la photo envoyée avec son identifiant", async () => {
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    fill(/^Nom/, "Crème Hydratante");
+    fill(/^Catégorie/, "Hydratation");
+    fill(/^Prix de vente/, "7 500");
+    fill(/^Stock initial/, "3");
+    const f = photo();
+    choose(f);
+    expect(screen.getByRole("button", { name: "Remplacer la photo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Créer le produit" }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledWith("creme-hydratante", f, null));
+    expect(mocks.create.mock.invocationCallOrder[0]).toBeLessThan(mocks.upload.mock.invocationCallOrder[0]!);
+    expect(await screen.findByText(/« Crème Hydratante » a été ajouté au catalogue/)).toBeInTheDocument();
+  });
+
+  it("création : photo refusée par le serveur, produit tout de même créé et signalé", async () => {
+    mocks.upload.mockRejectedValue(new Error("Accès refusé : ce compte n'est pas autorisé à modifier les photos."));
+    show();
+    await screen.findByText("Savon Mélisse 2 en 1");
+    fireEvent.click(screen.getByRole("button", { name: /Ajouter un produit/ }));
+    await screen.findByRole("dialog");
+    fill(/^Nom/, "Crème Hydratante");
+    fill(/^Catégorie/, "Hydratation");
+    fill(/^Prix de vente/, "7 500");
+    choose(photo());
+    fireEvent.click(screen.getByRole("button", { name: "Créer le produit" }));
+
+    expect(await screen.findByText(/a été ajouté, mais sa photo n'a pas pu être enregistrée : Accès refusé/)).toBeInTheDocument();
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });
