@@ -73,8 +73,8 @@ export function createApi(client: DataClient | null) {
         services: ((s.data as ServiceRow[]) ?? []).map((x) => ({
           id: x.id, name: x.name, category: x.category, description: x.description,
           duration: x.duration_label, price: x.price_fcfa,
-          // Les photos restent locales (même identifiant) tant que le catalogue distant n'a pas d'image_url.
-          image: localServices.find((l) => l.id === x.id)?.image ?? x.image_url ?? "",
+          // Photo téléversée par l'administrateur en priorité ; sinon la photo locale de même identifiant (image par défaut).
+          image: x.image_url || (localServices.find((l) => l.id === x.id)?.image ?? ""),
         })),
         timeSlots: ((t.data as { slot: string }[]) ?? []).map((x) => hhmm(x.slot)),
         rules: row ? {

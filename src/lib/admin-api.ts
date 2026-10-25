@@ -10,7 +10,7 @@ export type AdminBooking = {
 };
 export type AdminService = {
   id: string; name: string; category: string; description: string; durationLabel: string; durationMin: number;
-  price: number; active: boolean; isDemo: boolean;
+  price: number; active: boolean; isDemo: boolean; imageUrl: string | null;
 };
 export type AdminSettings = {
   timezone: string; minNoticeHours: number; cancelNoticeHours: number; maxDaysAhead: number; maxActivePerPhone: number;
@@ -102,18 +102,18 @@ export async function listAdminBookings(): Promise<AdminBooking[]> {
 
 type ServiceRow = {
   id: string; name: string; category: string; description: string; duration_label: string; duration_min: number;
-  price_fcfa: number; active: boolean; is_demo: boolean;
+  price_fcfa: number; active: boolean; is_demo: boolean; image_url: string | null;
 };
 
 /** Catalogue complet (actif ou non) : la politique « admin services » le permet à l'administrateur uniquement. */
 export async function listAdminServices(): Promise<AdminService[]> {
   const rows = await run<ServiceRow[]>("Lecture des prestations", () =>
     client().from("services")
-      .select("id,name,category,description,duration_label,duration_min,price_fcfa,active,is_demo")
+      .select("id,name,category,description,duration_label,duration_min,price_fcfa,active,is_demo,image_url")
       .order("sort_order"));
   return (rows ?? []).map((r) => ({
     id: r.id, name: r.name, category: r.category, description: r.description, durationLabel: r.duration_label,
-    durationMin: r.duration_min, price: r.price_fcfa, active: r.active, isDemo: r.is_demo,
+    durationMin: r.duration_min, price: r.price_fcfa, active: r.active, isDemo: r.is_demo, imageUrl: r.image_url,
   }));
 }
 

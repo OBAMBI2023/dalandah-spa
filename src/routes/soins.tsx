@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { services, serviceCategories, type ServiceCategory } from "@/data/services";
+import { serviceCategories, type ServiceCategory } from "@/data/services";
+import { useCatalogue } from "@/lib/catalogue";
 import { ServiceCard } from "@/components/cards";
 import { PageTitle } from "@/components/layout";
 
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/soins")({
 
 function Soins() {
   const { categorie } = Route.useSearch();
+  const { services } = useCatalogue();
   const list = categorie ? services.filter((s) => s.category === categorie) : services;
   const chip = "rounded-full border px-4 py-2 text-sm transition";
   return (

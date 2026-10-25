@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DataState, PageHeader, Panel } from "@/components/admin";
 import { Img } from "@/components/app";
+import { ServicePhotoDialog } from "@/components/service-photo-dialog";
 import { serviceCategories, services as localServices } from "@/data/services";
 import { formatFCFA } from "@/lib/format";
 import { useAdminServices, viewState } from "@/lib/admin-queries";
@@ -97,19 +98,20 @@ function Prestations() {
         <DataState {...viewState(query, shown.length)} onRetry={() => void query.refetch()}>
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>Prestation</TableHead><TableHead>Catégorie</TableHead><TableHead>Durée</TableHead><TableHead className="text-right">Prix</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Prestation</TableHead><TableHead>Catégorie</TableHead><TableHead>Durée</TableHead><TableHead className="text-right">Prix</TableHead><TableHead className="text-right">Photo</TableHead></TableRow></TableHeader>
               <TableBody>
                 {shown.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Img src={imageOf(s.id)} sizes="96px" className="h-10 w-10 shrink-0 rounded-lg" />
+                        <Img src={s.imageUrl || imageOf(s.id)} sizes="96px" className="h-10 w-10 shrink-0 rounded-lg" />
                         <div><p className="font-medium text-deep">{s.name}{!s.active && <Badge variant="outline" className="ml-2">Inactive</Badge>}</p><p className="line-clamp-1 text-xs text-muted-foreground">{s.description}</p></div>
                       </div>
                     </TableCell>
                     <TableCell><Badge variant="secondary">{label(s.category)}</Badge></TableCell>
                     <TableCell>{s.durationLabel}</TableCell>
                     <TableCell className="text-right">{formatFCFA(s.price)}</TableCell>
+                    <TableCell className="text-right"><ServicePhotoDialog service={s} fallbackImage={imageOf(s.id)} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
