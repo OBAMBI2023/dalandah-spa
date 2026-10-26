@@ -7,6 +7,8 @@ import { abidjanToday, startsAtMs } from "@/lib/bookings";
 export type AdminBooking = {
   ref: string; name: string; phone: string; phoneKey: string; serviceName: string; date: string; slot: string;
   status: "confirmed" | "cancelled"; price: number; createdAt: string;
+  /** Identifiant de la prestation réservée (permet le rattachement à sa catégorie). */
+  serviceId?: string | undefined;
 };
 export type AdminService = {
   id: string; name: string; category: string; description: string; durationLabel: string; durationMin: number;
@@ -83,7 +85,7 @@ export async function hasAdminRole(): Promise<boolean> {
 }
 
 type BookingRow = {
-  ref: string; name: string; phone: string; phone_key: string; service_name: string; date: string; slot: string;
+  ref: string; name: string; phone: string; phone_key: string; service_id?: string | null; service_name: string; date: string; slot: string;
   status: "confirmed" | "cancelled"; price_fcfa: number; created_at: string;
 };
 
@@ -91,11 +93,11 @@ type BookingRow = {
 export async function listAdminBookings(): Promise<AdminBooking[]> {
   const rows = await run<BookingRow[]>("Lecture des réservations", () =>
     client().from("bookings")
-      .select("ref,name,phone,phone_key,service_name,date,slot,status,price_fcfa,created_at")
+      .select("ref,name,phone,phone_key,service_id,service_name,date,slot,status,price_fcfa,created_at")
       .order("starts_at", { ascending: false })
       .limit(BOOKINGS_LIMIT));
   return (rows ?? []).map((r) => ({
-    ref: r.ref, name: r.name, phone: r.phone, phoneKey: r.phone_key, serviceName: r.service_name,
+    ref: r.ref, name: r.name, phone: r.phone, phoneKey: r.phone_key, serviceName: r.service_name, ...(r.service_id ? { serviceId: r.service_id } : {}),
     date: String(r.date).slice(0, 10), slot: String(r.slot).slice(0, 5), status: r.status, price: r.price_fcfa, createdAt: r.created_at,
   }));
 }

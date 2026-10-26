@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -105,5 +105,37 @@ describe("AdminGate", () => {
     fireEvent.click(screen.getByRole("button", { name: /Se déconnecter/ }));
 
     expect(mocks.adminSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  describe("zone de compte", () => {
+    it("monogramme « DS », e-mail du compte réellement connecté (jamais codé en dur) et bouton de déconnexion", async () => {
+      mocks.adminEmail.mockResolvedValue("autre.compte@exemple.test");
+      setup();
+      const zone = await screen.findByLabelText("Compte administrateur");
+      expect(within(zone).getByText("DS")).toBeInTheDocument();
+      expect(within(zone).getByText("autre.compte@exemple.test")).toHaveAttribute("title", "autre.compte@exemple.test");
+      expect(within(zone).getByRole("button", { name: "Se déconnecter" })).toBeInTheDocument();
+      expect(screen.queryByText(/dalanda-spa2026/)).not.toBeInTheDocument();
+    });
+
+    it("la déconnexion réelle ferme l'accès : formulaire de connexion, contenu protégé masqué", async () => {
+      mocks.adminSignOut.mockImplementation(async () => { mocks.adminEmail.mockResolvedValue(null); });
+      setup();
+      await screen.findByText("Contenu protégé");
+      fireEvent.click(screen.getByRole("button", { name: "Se déconnecter" }));
+      expect(await screen.findByText("Connexion administrateur")).toBeInTheDocument();
+      expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Compte administrateur")).not.toBeInTheDocument();
+      expect(mocks.adminSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    it("compte sans rôle administrateur : la zone de compte reste affichée avec la déconnexion, contenu masqué", async () => {
+      mocks.hasAdminRole.mockResolvedValue(false);
+      setup();
+      expect(await screen.findByText("Accès refusé")).toBeInTheDocument();
+      expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Se déconnecter" }));
+      await waitFor(() => expect(mocks.adminSignOut).toHaveBeenCalledTimes(1));
+    });
   });
 });

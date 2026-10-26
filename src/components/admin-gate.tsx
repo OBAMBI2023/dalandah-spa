@@ -1,12 +1,16 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut } from "lucide-react";
 import { DataState } from "@/components/admin";
+import { AdminAccount } from "@/components/admin-account";
 import { adminConfigured, adminEmail, adminSignIn, adminSignOut, hasAdminRole } from "@/lib/admin-api";
 
 const EmailContext = createContext<string | null>(null);
 /** E-mail du compte administrateur connecté (disponible sous <AdminGate>). */
 export const useAdminEmail = () => useContext(EmailContext);
+
+const SignOutContext = createContext<(() => void) | null>(null);
+/** Déconnexion réelle de AdminGate, pour les pages qui affichent leur propre zone de compte (tableau de bord). */
+export const useAdminSignOut = () => useContext(SignOutContext);
 
 function LoginForm({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState("");
@@ -46,7 +50,8 @@ export function AdminGate({ children }: { children: ReactNode }) {
   const role = useQuery({ queryKey: ["admin", "role", email], queryFn: hasAdminRole, enabled: !!email, staleTime: 0, retry: false });
 
   const refresh = () => { void qc.invalidateQueries({ queryKey: ["admin"] }); };
-  const signOut = async () => { await adminSignOut(); qc.clear(); refresh(); };
+  // Après la déconnexion, on vide le cache puis on RELIT la session : l'écran revient au formulaire de connexion (clear() seul ne relance aucune lecture).
+  const signOut = async () => { await adminSignOut(); qc.clear(); await session.refetch(); };
 
   if (!adminConfigured) {
     return <DataState status="unavailable" title="Base de données non configurée" text="Les variables VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY sont absentes : l'application fonctionne en mode local." />;
@@ -57,12 +62,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
   if (role.isPending) return <DataState status="loading" />;
   if (role.isError) return <DataState status="error" onRetry={refresh} />;
 
-  const bar = (
-    <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground">
-      <span>{email}</span>
-      <button onClick={() => void signOut()} className="btn btn-outline"><LogOut className="h-4 w-4" />Se déconnecter</button>
-    </div>
-  );
+  const bar = <div className="acct-row"><AdminAccount email={email} onSignOut={() => void signOut()} /></div>;
   if (!role.data) {
     return (
       <div className="space-y-4">
@@ -76,10 +76,12 @@ export function AdminGate({ children }: { children: ReactNode }) {
   }
   return (
     <EmailContext.Provider value={email}>
-      <div className="space-y-6">
-        {bar}
-        {children}
-      </div>
+      <SignOutContext.Provider value={() => void signOut()}>
+        <div className="space-y-6">
+          {bar}
+          {children}
+        </div>
+      </SignOutContext.Provider>
     </EmailContext.Provider>
   );
 }

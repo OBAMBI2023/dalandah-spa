@@ -88,6 +88,10 @@ export function promotionTarget(p: Pick<Promotion, "serviceId" | "productId">): 
 const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 export const formatPromoDate = (iso: string) => DATE_FORMAT.format(new Date(`${iso}T00:00:00Z`));
 
+const SHORT_DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+/** Date courte pour les tableaux : « 25 oct. 2026 ». */
+export const shortPromoDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
+
 /** Période en toutes lettres, ou null si la promotion n’a aucune date. */
 export function periodLabel(p: Pick<Promotion, "startsOn" | "endsOn">): string | null {
   if (p.startsOn && p.endsOn) return p.startsOn === p.endsOn ? `Le ${formatPromoDate(p.startsOn)}` : `Du ${formatPromoDate(p.startsOn)} au ${formatPromoDate(p.endsOn)}`;

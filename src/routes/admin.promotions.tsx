@@ -16,7 +16,7 @@ import { conversionRate, CONVERSION_DEFINITION, TRACKING_LIMITS, TrackingNotInst
 import { useAdminProducts, useAdminPromotionStats, useAdminPromotions, useAdminServices, usePromotionBookings, viewState } from "@/lib/admin-queries";
 import { formatFCFA } from "@/lib/format";
 import {
-  discountPercent, KIND_LABELS, periodLabel, PROMOTIONS_KEY, promotionStatus, STATUS_LABELS, type Promotion, type PromotionStatus,
+  discountPercent, KIND_LABELS, periodLabel, PROMOTIONS_KEY, promotionStatus, shortPromoDate, STATUS_LABELS, type Promotion, type PromotionStatus,
 } from "@/lib/promotions";
 import { abidjanToday } from "@/lib/bookings";
 
@@ -44,6 +44,23 @@ function inPeriod(p: Promotion, f: PeriodFilter, today: string): boolean {
   if (f === "upcoming") return !!p.startsOn && p.startsOn > today;
   if (f === "past") return !!p.endsOn && p.endsOn < today;
   return (!p.startsOn || p.startsOn <= today) && (!p.endsOn || p.endsOn >= today);
+}
+
+/**
+ * Période compacte : deux dates courtes l'une sous l'autre, séparées par une flèche discrète (« 25 oct. 2026 → 31 oct. 2026 » en ligne sur mobile).
+ * La formulation complète (« Du 25 octobre 2026 au 31 octobre 2026 ») reste disponible au survol et pour les lecteurs d'écran.
+ */
+function PeriodCell({ p, inline = false }: { p: Promotion; inline?: boolean }) {
+  const full = periodLabel(p);
+  if (!full) return <span className="ap-muted-text">Sans limite de dates</span>;
+  const { startsOn: a, endsOn: b } = p;
+  const lines = a && b && a !== b ? [shortPromoDate(a), shortPromoDate(b)] : a && b ? [shortPromoDate(a)] : a ? [`dès le ${shortPromoDate(a)}`] : [`jusqu'au ${shortPromoDate(b!)}`];
+  return (
+    <span className={inline ? "ap-period ap-period-inline" : "ap-period"} title={full} aria-label={full}>
+      <span aria-hidden="true">{lines[0]}</span>
+      {lines[1] && <><span className="ap-period-sep" aria-hidden="true">{inline ? "→" : "au"}</span><span aria-hidden="true">{lines[1]}</span></>}
+    </span>
+  );
 }
 
 function StatusPill({ status }: { status: PromotionStatus }) {
@@ -249,7 +266,7 @@ function Promotions() {
                   <div className="ap-card-meta">
                     <span>{prices(p)}</span>
                     {discountPercent(p) !== null && <span className="ap-chip">{reduction(p)}</span>}
-                    <span className="ml-auto">{periodLabel(p) ?? "Sans limite de dates"}</span>
+                    <span className="ml-auto"><PeriodCell p={p} inline /></span>
                   </div>
                   {statOf(p.id) && (
                     <p className="ap-card-meta" aria-label="Suivi">
@@ -264,39 +281,39 @@ function Promotions() {
           )
           : (
             <div className="overflow-x-auto">
-              <table className="ap-table">
+              <table className="ap-table ap-promo-table">
                 <thead>
                   <tr>
-                    <th className="w-0"><span className="sr-only">Visuel</span></th>
+                    <th className="ap-col-thumb"><span className="sr-only">Visuel</span></th>
                     <th>Promotion</th>
-                    <th>Prix annoncés</th>
-                    <th className="ap-num">Réduction</th>
-                    <th>Période</th>
-                    <th className="ap-num" title="Visites uniques par session et par jour">Impressions</th>
-                    <th className="ap-num">Clics</th>
-                    <th className="ap-num" title="Réservations créées et rattachées à la promotion">Réservations</th>
-                    <th className="ap-num" title={CONVERSION_DEFINITION}>Conversion</th>
-                    <th>Statut</th>
-                    <th className="ap-num">Actions</th>
+                    <th className="ap-col-price">Prix annoncés</th>
+                    <th className="ap-col-n">Réduction</th>
+                    <th className="ap-col-period">Période</th>
+                    <th className="ap-col-n" title="Visites uniques par session et par jour">Impressions</th>
+                    <th className="ap-col-n">Clics</th>
+                    <th className="ap-col-n" title="Réservations créées et rattachées à la promotion">Réservations</th>
+                    <th className="ap-col-n" title={CONVERSION_DEFINITION}>Conversion</th>
+                    <th className="ap-col-status">Statut</th>
+                    <th className="ap-col-actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {shown.map(({ p, s }) => (
                     <tr key={p.id} data-active={s === "active"}>
-                      <td><div className="ap-thumb"><Img src={p.imageUrl ?? undefined} sizes="96px" className="h-full w-full" /></div></td>
-                      <td>
+                      <td><div className="ap-thumb"><Img src={p.imageUrl ?? undefined} sizes="96px" className="h-full w-full object-cover" /></div></td>
+                      <td className="ap-col-name">
                         <p className="ap-product-name">{p.title}</p>
                         <p className="ap-clamp">{KIND_LABELS[p.kind]}{targetName(p) ? ` · ${targetName(p)}` : ""}</p>
                       </td>
-                      <td className="whitespace-nowrap">{prices(p)}</td>
-                      <td className="ap-num whitespace-nowrap">{reduction(p)}</td>
-                      <td className="text-sm">{periodLabel(p) ?? <span className="ap-muted-text">Sans limite de dates</span>}</td>
-                      <td className="ap-num">{statOf(p.id) ? nf.format(statOf(p.id)!.impressions) : dash}</td>
-                      <td className="ap-num">{statOf(p.id) ? nf.format(statOf(p.id)!.clicks) : dash}</td>
-                      <td className="ap-num">{statOf(p.id) ? <>{nf.format(statOf(p.id)!.bookingsCreated)}{statOf(p.id)!.bookingsCreated > 0 && <span className="ap-muted-text"> ({nf.format(statOf(p.id)!.bookingsConfirmed)} conf.)</span>}</> : dash}</td>
-                      <td className="ap-num whitespace-nowrap">{statOf(p.id) ? conversion(p.id) : dash}</td>
-                      <td><StatusPill status={s} /></td>
-                      <td>{actions(p)}</td>
+                      <td className="ap-col-price whitespace-nowrap">{prices(p)}</td>
+                      <td className="ap-col-n whitespace-nowrap">{reduction(p)}</td>
+                      <td className="ap-col-period"><PeriodCell p={p} /></td>
+                      <td className="ap-col-n">{statOf(p.id) ? nf.format(statOf(p.id)!.impressions) : dash}</td>
+                      <td className="ap-col-n">{statOf(p.id) ? nf.format(statOf(p.id)!.clicks) : dash}</td>
+                      <td className="ap-col-n">{statOf(p.id) ? <>{nf.format(statOf(p.id)!.bookingsCreated)}{statOf(p.id)!.bookingsCreated > 0 && <span className="ap-muted-text"> ({nf.format(statOf(p.id)!.bookingsConfirmed)} conf.)</span>}</> : dash}</td>
+                      <td className="ap-col-n whitespace-nowrap">{statOf(p.id) ? conversion(p.id) : dash}</td>
+                      <td className="ap-col-status"><StatusPill status={s} /></td>
+                      <td className="ap-col-actions">{actions(p)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, Database, Inbox, RefreshCw } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** État d'une source de données du back-office. "unavailable" = aucun backend connecté à ce jour. */
@@ -15,18 +14,6 @@ export function PageHeader({ title, text, actions }: { title: string; text?: str
       </div>
       {actions}
     </div>
-  );
-}
-
-export function SecurityBanner() {
-  return (
-    <Alert className="border-gold-deep/40 bg-gold/10">
-      <AlertTriangle className="h-4 w-4 text-gold-deep" />
-      <AlertTitle>Espace non sécurisé</AlertTitle>
-      <AlertDescription>
-        Toutes les pages exigent une connexion administrateur et les données sont protégées par la base (RLS). L'authentification à deux facteurs (MFA) n'est pas en place et la modification des données n'est pas disponible : n'exposez pas cette interface en production en l'état.
-      </AlertDescription>
-    </Alert>
   );
 }
 

@@ -1,14 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { cloneElement, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ bookings: vi.fn(), services: vi.fn(), settings: vi.fn() }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (opts: Record<string, unknown>) => opts,
+  Link: ({ children, to }: { children?: unknown; to: string }) => <a href={to}>{children as never}</a>,
 }));
+vi.mock("recharts", async (orig) => {
+  const m = await orig<typeof import("recharts")>();
+  return { ...m, ResponsiveContainer: ({ children, height }: { children: ReactElement; height?: number }) => cloneElement(children, { width: 600, height: height ?? 250 } as never) };
+});
 vi.mock("@/components/app", () => ({ Img: () => null }));
+vi.mock("@/lib/admin-service-categories", async (orig) => ({ ...(await orig<typeof import("@/lib/admin-service-categories")>()), listAdminServiceCategories: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/admin-api", async (orig) => ({
   ...(await orig<typeof import("@/lib/admin-api")>()),
   listAdminBookings: mocks.bookings,
@@ -98,11 +104,10 @@ describe("pages d'administration branchées sur la base", () => {
     mocks.services.mockResolvedValue([{ id: "a", name: "A", category: "visage", description: "", durationLabel: "60 min", durationMin: 60, price: 1, active: true, isDemo: true }]);
     show(Overview);
 
-    const card = (label: string) => screen.getByText(label).parentElement!;
+    const card = (label: string) => screen.getByText(label, { selector: ".dash-card-label" }).parentElement!;
     await waitFor(() => expect(within(card("Réservations du jour")).getByText("1")).toBeInTheDocument());
     expect(within(card("Rendez-vous à venir")).getByText("2")).toBeInTheDocument();
-    expect(within(card("Clients")).getByText("2")).toBeInTheDocument();
-    await waitFor(() => expect(within(card("Prestations au catalogue")).getByText("1")).toBeInTheDocument());
+    await waitFor(() => expect(within(card("Clients")).getByText("2")).toBeInTheDocument());   // clients distincts
     expect(await screen.findByText(/AUJ/)).toBeInTheDocument();
     expect(screen.queryByText("Aucune donnée connectée")).not.toBeInTheDocument();
   });

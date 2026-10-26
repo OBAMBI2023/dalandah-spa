@@ -3,7 +3,6 @@ import { useState } from "react";
 import { LayoutDashboard, CalendarDays, Users, Sparkles, Package, Tag, Settings, Menu, ExternalLink } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { LogoMark } from "@/components/app";
-import { SecurityBanner } from "@/components/admin";
 import { AdminGate } from "@/components/admin-gate";
 
 export const Route = createFileRoute("/admin")({
@@ -23,10 +22,9 @@ const nav = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav aria-label="Administration" className="space-y-1">
+    <nav aria-label="Administration" className="adm-nav">
       {nav.map(({ to, label, Icon, exact }) => (
-        <Link key={to} to={to} activeOptions={{ exact }} onClick={onNavigate}
-          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-foreground/75 transition hover:bg-secondary data-[status=active]:bg-sage data-[status=active]:font-semibold data-[status=active]:text-sage-foreground">
+        <Link key={to} to={to} activeOptions={{ exact }} onClick={onNavigate} className="adm-nav-link">
           <Icon className="h-5 w-5" strokeWidth={1.6} />{label}
         </Link>
       ))}
@@ -36,7 +34,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 function SideFooter() {
   return (
-    <Link to="/" className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground hover:bg-secondary">
+    <Link to="/" className="adm-nav-link adm-nav-foot">
       <ExternalLink className="h-4 w-4" />Voir le site public
     </Link>
   );
@@ -46,9 +44,9 @@ function AdminLayout() {
   const [open, setOpen] = useState(false);
   return (
     <div className="admin-shell min-h-screen bg-background lg:grid lg:grid-cols-[16rem_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r bg-card px-4 py-6 lg:flex">
-        <div className="px-2"><LogoMark /></div>
-        <p className="mt-2 text-center text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Administration</p>
+      <aside className="adm-side sticky top-0 hidden h-screen flex-col px-4 py-6 lg:flex">
+        <div className="px-2"><LogoMark light /></div>
+        <p className="adm-side-label mt-2 text-center text-[10px] uppercase tracking-[0.25em]">Administration</p>
         <div className="mt-8 flex-1"><NavLinks /></div>
         <SideFooter />
       </aside>
@@ -60,9 +58,9 @@ function AdminLayout() {
           <span className="w-10" />
         </header>
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" className="flex w-72 flex-col bg-card">
+          <SheetContent side="left" className="adm-side flex w-72 flex-col border-0">
             <SheetHeader>
-              <SheetTitle className="font-display text-xl">Administration</SheetTitle>
+              <SheetTitle className="adm-side-title font-display text-xl">Administration</SheetTitle>
               <SheetDescription className="sr-only">Navigation du back-office</SheetDescription>
             </SheetHeader>
             <div className="mt-4 flex-1"><NavLinks onNavigate={() => setOpen(false)} /></div>
@@ -71,7 +69,6 @@ function AdminLayout() {
         </Sheet>
 
         <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-8 md:py-8">
-          <SecurityBanner />
           <AdminGate><Outlet /></AdminGate>
         </main>
       </div>

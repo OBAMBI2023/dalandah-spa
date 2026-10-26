@@ -268,7 +268,7 @@ export function PromotionFormDialog({ promotion, services, products, linksProble
                   <p className="ap-hint">Copie le tarif actuel ({formatFCFA(targetPrice!)}) dans le champ « {kind === "price" ? "Prix initial annoncé" : "Prix de référence annoncé"} ». C'est seulement une valeur de départ, modifiable : elle ne suit pas le tarif réel.</p>
                 </div>
               )}
-              {kind !== "announcement" && <p className="ap-notice ap-notice-info">{PROMO_NOTICE}</p>}
+              {(kind === "price" || kind === "percent") && <p className="ap-notice ap-notice-info">{PROMO_NOTICE}</p>}
             </section>
 
             <section className="ap-section ap-stack">

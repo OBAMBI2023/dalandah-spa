@@ -577,6 +577,33 @@ describe("type explicite, réduction et prix annoncés", () => {
     expect(screen.queryByLabelText(/^Pourcentage de réduction annoncé/)).not.toBeInTheDocument();
   });
 
+  it("mention « annonce promotionnelle » : masquée tant qu'aucun type n'est choisi, affichée pour Prix et Pourcentage, masquée pour Simple annonce", async () => {
+    await open();
+    expect(screen.queryByText(PROMO_NOTICE)).not.toBeInTheDocument();   // aucun type sélectionné
+    pick("price");
+    expect(screen.getByText(PROMO_NOTICE)).toBeInTheDocument();
+    pick("percent");
+    expect(screen.getByText(PROMO_NOTICE)).toBeInTheDocument();
+    pick("announcement");
+    expect(screen.queryByText(PROMO_NOTICE)).not.toBeInTheDocument();
+    pick("price");
+    expect(screen.getByText(PROMO_NOTICE)).toBeInTheDocument();
+  });
+
+  it("modification d'une promotion existante : la mention suit le type enregistré (prix : affichée, annonce : masquée)", async () => {
+    mocks.list.mockResolvedValue([mk({ id: "p", title: "Avec prix", kind: "price", original_price_fcfa: 20000, promo_price_fcfa: 15000 }), mk({ id: "a", title: "Sans prix" })]);
+    show();
+    await screen.findByText("Avec prix");
+    fireEvent.click(screen.getByRole("button", { name: "Modifier Avec prix" }));
+    await screen.findByRole("dialog");
+    expect(screen.getByText(PROMO_NOTICE)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Modifier Sans prix" }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(PROMO_NOTICE)).not.toBeInTheDocument();
+  });
+
   it("enregistrer sans avoir choisi de type est impossible (c'était la cause de « la réduction ne s'affiche pas »)", async () => {
     await open();
     fill(/^Titre de la promotion/, "Promo");
@@ -878,5 +905,61 @@ describe("suivi : statistiques par promotion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Consulter Massage duo" }));
     const d = await screen.findByRole("dialog");
     expect(within(d).queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("tableau compact : colonne Période", () => {
+  const period = (title: string) => (row(title) as HTMLElement).querySelector(".ap-period") as HTMLElement | null;
+  const withDates = (id: string, title: string, a: string | null, b: string | null) => mk({ id, title, starts_on: a, ends_on: b });
+
+  it("deux dates courtes sur deux lignes, séparées par « au », sans formulation « Du … au … » visible", async () => {
+    mocks.list.mockResolvedValue([withDates("p", "Rentrée", "2026-10-25", "2026-10-31")]);
+    show();
+    await screen.findByText("Rentrée");
+    const el = period("Rentrée")!;
+    expect([...el.children].map((c) => c.textContent)).toEqual(["25 oct. 2026", "au", "31 oct. 2026"]);
+    expect(el.textContent).not.toMatch(/^Du /);
+    expect(el.textContent).not.toMatch(/octobre/);
+  });
+
+  it("dates complètes au survol et pour les lecteurs d'écran (info-bulle et libellé)", async () => {
+    mocks.list.mockResolvedValue([withDates("p", "Rentrée", "2026-10-25", "2026-10-31")]);
+    show();
+    await screen.findByText("Rentrée");
+    const el = period("Rentrée")!;
+    expect(el).toHaveAttribute("title", "Du 25 octobre 2026 au 31 octobre 2026");
+    expect(el).toHaveAttribute("aria-label", "Du 25 octobre 2026 au 31 octobre 2026");
+  });
+
+  it("début seul, fin seule, même jour, sans date", async () => {
+    mocks.list.mockResolvedValue([
+      withDates("a", "Début seul", "2026-11-05", null), withDates("b", "Fin seule", null, "2026-11-30"), withDates("c", "Un jour", "2026-11-05", "2026-11-05"), withDates("d", "Sans date", null, null),
+    ]);
+    show();
+    await screen.findByText("Début seul");
+    expect(period("Début seul")!.textContent).toBe("dès le 5 nov. 2026");
+    expect(period("Fin seule")!.textContent).toBe("jusqu'au 30 nov. 2026");
+    expect(period("Un jour")!.textContent).toBe("5 nov. 2026");
+    expect(period("Sans date")).toBeNull();
+    expect(within(row("Sans date") as HTMLElement).getByText("Sans limite de dates")).toBeInTheDocument();
+  });
+
+  it("colonnes et fonctionnalités conservées ; les nombres et la conversion gardent leur comportement (tiret sans clic)", async () => {
+    show();
+    await screen.findByText("Massage duo");
+    for (const h of ["Promotion", "Prix annoncés", "Réduction", "Période", "Impressions", "Clics", "Réservations", "Conversion", "Statut", "Actions"]) expect(screen.getByRole("columnheader", { name: h })).toBeInTheDocument();
+    expect(document.querySelector("table.ap-promo-table")).not.toBeNull();
+    expect(within(row("Soins sans limite") as HTMLElement).getByText("—", { selector: "td.ap-col-n span" })).toBeInTheDocument();
+    expect(within(row("Massage duo") as HTMLElement).getByRole("button", { name: "Modifier Massage duo" })).toBeInTheDocument();
+  });
+
+  it("mobile : période en ligne avec une flèche, sans « Du … au … »", async () => {
+    mocks.mobile.value = true;
+    mocks.list.mockResolvedValue([withDates("p", "Rentrée", "2026-10-25", "2026-10-31")]);
+    show();
+    await screen.findByText("Rentrée");
+    const el = period("Rentrée")!;
+    expect(el.classList.contains("ap-period-inline")).toBe(true);
+    expect([...el.children].map((c) => c.textContent)).toEqual(["25 oct. 2026", "→", "31 oct. 2026"]);
   });
 });
