@@ -30,7 +30,7 @@ function Plus() {
           <Link key={to} to={to} className="flex items-center gap-4 rounded-xl px-2 py-3.5 text-base hover:bg-white/10"><Icon className="h-6 w-6" strokeWidth={1.4} />{label}</Link>
         ))}
       </nav>
-      <p className="mt-12 flex items-center gap-2 font-display text-2xl italic text-gold">La beauté de naturel <Heart className="h-5 w-5" /></p>
+      <p className="mt-12 flex items-center gap-2 font-display text-2xl italic text-gold">La beauté du naturel <Heart className="h-5 w-5" /></p>
     </div>
   );
 }

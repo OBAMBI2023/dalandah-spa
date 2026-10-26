@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Bell, Calendar, Smile, User, Scissors, Flower2, Hand, Tag, ArrowRight, MapPin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import hero from "@/assets/hero.jpg";
+import hero from "@/assets/hero-spa.jpg";
 import { useCatalogue } from "@/lib/catalogue";
 import { serviceCategories } from "@/data/services";
 import { categoriesInUse } from "@/lib/service-categories";

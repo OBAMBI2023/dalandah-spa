@@ -1,7 +1,7 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { useCallback, useState, type ReactNode } from "react";
 import { responsiveSources } from "@/lib/images";
-import { ChevronLeft, Check, Flower2, Home, Sparkles, CalendarDays, Tag, Menu } from "lucide-react";
+import { ChevronLeft, Check, Flower2, Home, Sparkles, CalendarDays, ShoppingBag, Menu } from "lucide-react";
 
 export function LogoMark({ light = false, size = "md" }: { light?: boolean; size?: "md" | "lg" }) {
   const c = light ? "text-gold" : "text-gold-deep";
@@ -56,7 +56,7 @@ export function AppTabBar() {
     { to: "/", label: "Accueil", Icon: Home },
     { to: "/prestations", label: "Prestations", Icon: Sparkles },
     { to: "/rendez-vous", label: "Mes RDV", Icon: CalendarDays },
-    { to: "/promotions", label: "Promotions", Icon: Tag },
+    { to: "/boutique", label: "Boutique", Icon: ShoppingBag },
     { to: "/plus", label: "Plus", Icon: Menu },
   ] as const;
   return (

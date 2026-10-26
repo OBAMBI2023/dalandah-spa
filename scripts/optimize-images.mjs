@@ -10,7 +10,7 @@ const OUT = "src/assets/optimized";
 // Largeurs générées par image (jamais au-delà de la taille d'origine) et qualité WebP.
 // Les noms qui ne correspondent à aucune règle utilisent la règle "default".
 const rules = [
-  { match: /^hero\./, widths: [480, 768, 1024], quality: 72 },
+  { match: /^hero[.-]/, widths: [480, 768, 1024], quality: 64 },
   { match: /^p-/, widths: [320, 640], quality: 74 },
   { match: /./, widths: [480, 960], quality: 74 },
 ];

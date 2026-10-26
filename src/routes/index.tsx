@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Leaf, Heart, Sparkles, Flower2, Clock } from "lucide-react";
-import hero from "@/assets/hero.jpg";
-import gamme from "@/assets/gamme.jpg.asset.json";
+import hero from "@/assets/hero-spa.jpg";
+import gammeCosmetique from "@/assets/gamme-cosmetique.jpg";
 import { useCatalogue } from "@/lib/catalogue";
 import { categoriesInUse } from "@/lib/service-categories";
 import { useShopProducts } from "@/lib/shop-products";
@@ -39,8 +39,8 @@ function Index() {
       <MobileHome />
       <div className="hidden lg:block">
       <section className="relative overflow-hidden bg-deep text-deep-foreground">
-        <Img sizes="100vw" src={hero} alt="Moment de détente chez Dalanda Beauty-Spa" className="absolute inset-0 h-full w-full object-cover opacity-45" />
-        <div className="absolute inset-0 bg-gradient-to-r from-deep via-deep/80 to-transparent" />
+        <Img sizes="100vw" src={hero} alt="Trois amies en peignoir profitant d'un moment de détente au spa" className="absolute inset-0 h-full w-full object-cover object-[50%_32%]" />
+        <div className="absolute inset-0 bg-gradient-to-r from-deep/92 via-deep/72 to-transparent" />
         <div className="relative mx-auto max-w-7xl px-5 py-24 md:py-36">
           <div className="max-w-2xl animate-fade-up">
             <p className="eyebrow !text-gold">Dalanda Beauty-Spa · Abidjan</p>
@@ -105,7 +105,7 @@ function Index() {
       </section>
 
       <section className="mx-auto grid max-w-7xl items-center gap-10 px-5 pb-20 md:grid-cols-2">
-        <Img src={gamme.url} alt="Gamme Dalanda Cosmétique" className="rounded-2xl shadow-soft" />
+        <Img sizes="(min-width: 768px) 50vw, 100vw" src={gammeCosmetique} alt="Affiche Dalanda Cosmétique : produits 100 % bio, gommage corps, mousse nettoyante, eau de parfum, savons et savon liquide" className="rounded-2xl shadow-soft" />
         <div>
           <p className="eyebrow">Dalanda Cosmétique</p>
           <h2 className="mt-2 text-4xl text-deep md:text-5xl">Une routine pensée pour votre peau</h2>
@@ -114,13 +114,13 @@ function Index() {
         </div>
       </section>
 
-      <section className="bg-primary py-20 text-center text-primary-foreground">
+      <section className="border-t bg-card py-20 text-center text-deep">
         <div className="mx-auto max-w-2xl px-5">
           <h2 className="text-4xl md:text-5xl">Accordez-vous un moment pour vous</h2>
-          <p className="mt-4 opacity-85">Un soin, un massage ou une nouvelle routine beauté : faites de votre bien-être une priorité.</p>
+          <p className="mt-4 text-muted-foreground">Un soin, un massage ou une nouvelle routine beauté : faites de votre bien-être une priorité.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link to="/reservation" className="btn btn-gold">Réserver un soin</Link>
-            <Link to="/boutique" className="btn btn-ghost-light">Découvrir la boutique</Link>
+            <Link to="/boutique" className="btn btn-outline">Découvrir la boutique</Link>
           </div>
         </div>
       </section>

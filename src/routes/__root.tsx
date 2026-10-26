@@ -85,6 +85,7 @@ function RootComponent() {
   }
   return (
     <QueryClientProvider client={queryClient}>
+      <div data-site="public" hidden />
       <CartProvider>
         <Header />
         <main className="min-h-[60vh] lg:pb-0"><Outlet /></main>
