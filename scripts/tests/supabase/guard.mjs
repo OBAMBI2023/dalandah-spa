@@ -36,14 +36,15 @@ const callable = async (role) => (await q(
     where n.nspname in ('public', 'private') and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
       and has_schema_privilege($1, n.nspname, 'usage') and has_function_privilege($1, p.oid, 'execute')`, [role])).map((r) => r.fn);
 
+// create_store_order / get_order : commandes de la boutique (migration 20261031) ; admin_*_order* : suivi par l'administrateur.
 // track_promotion_event / attribute_booking_to_promotion : suivi anonyme des promotions (migration 20261030), sans lecture ni donnée personnelle.
-const PUBLIC_API = ["public.attribute_booking_to_promotion", "public.cancel_booking", "public.create_booking", "public.get_availability", "public.get_booking", "public.track_promotion_event"];
+const PUBLIC_API = ["public.attribute_booking_to_promotion", "public.cancel_booking", "public.create_booking", "public.create_store_order", "public.get_availability", "public.get_booking", "public.get_order", "public.track_promotion_event"];
 const anonFns = await callable("anon");
 ok("anon n'exécute que l'API publique prévue", set(anonFns) === set(PUBLIC_API), set(anonFns));
 const authFns = await callable("authenticated");
 // normalize_phone (pure, sans donnée) est évaluée par une colonne générée avec les droits de l'appelant : tolérée si présente.
 // Fonctions d'administration (rôle admin vérifié dans la fonction, droits fermés à anon) : produits, étape 1.
-const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_create_service_category", "public.admin_list_products", "public.admin_promotion_stats", "public.admin_set_product_image", "public.admin_update_product"];
+const ADMIN_API = ["public.admin_create_category", "public.admin_create_product", "public.admin_create_service_category", "public.admin_list_orders", "public.admin_list_products", "public.admin_promotion_stats", "public.admin_set_order_delivery_fee", "public.admin_set_product_image", "public.admin_update_order_status", "public.admin_update_product"];
 const AUTH_ALLOWED = [...PUBLIC_API, ...ADMIN_API, "private.has_role", "private.is_admin", "private.normalize_phone"];
 ok("authenticated n'exécute que l'API publique et les helpers autorisés",
   authFns.every((f) => AUTH_ALLOWED.includes(f)) && [...PUBLIC_API, ...ADMIN_API].every((f) => authFns.includes(f)), set(authFns));
