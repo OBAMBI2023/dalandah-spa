@@ -94,7 +94,7 @@ function Checkout() {
             {Field({ k: "name", label: "Nom complet", autoComplete: "name" })}
             {Field({ k: "phone", label: "Téléphone", type: "tel", autoComplete: "tel", inputMode: "tel" })}
             {Field({ k: "address", label: "Adresse de livraison", autoComplete: "street-address" })}
-            {Field({ k: "area", label: "Commune ou quartier", autoComplete: "address-level2" })}
+            {Field({ k: "area", label: "Commune ou quartier", autoComplete: "off" })}
             <label className="block text-sm font-medium">Instructions de livraison (facultatif)
               <textarea className="field mt-1 min-h-20" value={f.notes} onChange={set("notes")} maxLength={300} disabled={!!ready} />
             </label>
