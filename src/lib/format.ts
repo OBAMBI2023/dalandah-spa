@@ -13,6 +13,14 @@ export const localOrderId = () => {
 
 export const isValidPhone = (s: string) => s.replace(/[\s.+-]/g, "").match(/^\d{8,15}$/) !== null;
 
+/** Numéro ivoirien (10 chiffres depuis 2021, avec ou sans +225 / 00225) ou numéro international écrit avec « + » (8 à 15 chiffres). */
+export const isValidCIPhone = (s: string) => {
+  const t = s.trim().replace(/[\s.()-]/g, "");
+  if (/^(\+|00)?225\d{10}$/.test(t)) return true;
+  if (/^0\d{9}$/.test(t)) return true;
+  return /^\+(?!225)\d{8,15}$/.test(t);
+};
+
 export type CartLine = { id: string; name: string; price: number; qty: number };
 
 export const cartSubtotal = (lines: CartLine[]) => lines.reduce((s, l) => s + l.price * l.qty, 0);
