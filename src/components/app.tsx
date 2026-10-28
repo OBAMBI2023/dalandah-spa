@@ -81,8 +81,12 @@ type ImgProps = {
 
 /** Image unique de l'appli : version réduite WebP si disponible, chargement différé, placeholder léger, repli si absente. */
 export function Img({ src, alt = "", className = "", sizes = "100vw", priority = false }: ImgProps) {
-  const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
-  const ref = useCallback((el: HTMLImageElement | null) => { if (el?.complete && el.naturalWidth > 0) setState("loaded"); }, []);
+  // L'état est rattaché à la src qui l'a produit : une nouvelle photo (remplacée dans l'administration) repart de « loading »
+  // au lieu de rester sur le repli après l'échec de la précédente.
+  const [load, setLoad] = useState<{ src: string | undefined; status: "loading" | "loaded" | "failed" }>({ src, status: "loading" });
+  const state = load.src === src ? load.status : "loading";
+  const setState = (status: "loaded" | "failed") => setLoad({ src, status });
+  const ref = useCallback((el: HTMLImageElement | null) => { if (el?.complete && el.naturalWidth > 0) setLoad({ src, status: "loaded" }); }, [src]);
   const r = src ? responsiveSources(src) : null;
   if (!src || state === "failed") {
     return (
