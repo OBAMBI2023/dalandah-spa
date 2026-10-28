@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
-import facial from "@/assets/facial.jpg.asset.json";
+import facial from "@/assets/facial.jpg";
 import { LogoMark, Img } from "@/components/app";
 
 export const Route = createFileRoute("/bienvenue")({
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/bienvenue")({
 function Splash() {
   return (
     <div className="relative mx-auto flex min-h-[100dvh] max-w-md flex-col justify-between overflow-hidden bg-deep px-6 py-10 text-center text-deep-foreground lg:min-h-[70vh]">
-      <Img priority sizes="448px" src={facial.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
+      <Img priority sizes="448px" src={facial} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
       <div className="absolute inset-0 bg-gradient-to-b from-deep/60 via-transparent to-deep/90" />
       <div className="relative flex justify-center"><LogoMark light size="lg" /></div>
       <div className="relative">
